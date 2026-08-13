@@ -24,10 +24,83 @@ function normalizeGender(raw) {
     return '';
 }
 
+/** 0〜2^32-1 のseedを正規化する。空欄は指定なしとして扱う。 */
+function parseShuffleSeed(raw) {
+    const text = String(raw ?? '').trim();
+    if (text === '') return { ok: true, isSpecified: false, seed: null };
+    if (!/^\d+$/.test(text)) {
+        return { ok: false, message: 'seedは 0〜4294967295 の整数で指定してください。' };
+    }
+    const value = Number(text);
+    if (!Number.isSafeInteger(value) || value < 0 || value > UINT32_MAX) {
+        return { ok: false, message: 'seedは 0〜4294967295 の整数で指定してください。' };
+    }
+    return { ok: true, isSpecified: true, seed: value >>> 0 };
+}
+
+/** 履歴・バックアップの値を安全に読み込む。旧データのseedなしは null。 */
+function coerceStoredShuffleSeed(raw) {
+    const parsed = parseShuffleSeed(raw);
+    return parsed.ok && parsed.isSpecified ? parsed.seed : null;
+}
+
+/** 自動seedは暗号学的乱数を優先し、非対応環境では時刻由来の値へ退避する。 */
+function createAutomaticShuffleSeed() {
+    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+        const values = new Uint32Array(1);
+        globalThis.crypto.getRandomValues(values);
+        return values[0];
+    }
+    return (Date.now() ^ Math.floor(performance.now() * 1000)) >>> 0;
+}
+
+/** mulberry32: 実行ごとに閉じた状態を持つ、グローバルを書き換えない擬似乱数生成器。 */
+function createSeededRandom(seed) {
+    let state = seed >>> 0;
+    return () => {
+        state = (state + 0x6D2B79F5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/** 探索段階ごとに乱数列を分離し、将来の入れ替え処理追加が既存段階へ波及しないようにする。 */
+function deriveShuffleSeed(masterSeed, streamTag) {
+    let value = (masterSeed ^ (streamTag >>> 0)) >>> 0;
+    value = Math.imul(value ^ (value >>> 16), 0x7FEB352D) >>> 0;
+    value = Math.imul(value ^ (value >>> 15), 0x846CA68B) >>> 0;
+    return (value ^ (value >>> 16)) >>> 0;
+}
+
+function createShuffleRandomStreams(seed) {
+    return {
+        initial: createSeededRandom(deriveShuffleSeed(seed, 0x1A2B3C4D)),
+        annealing: createSeededRandom(deriveShuffleSeed(seed, 0x5E6F7788)),
+        hill: createSeededRandom(deriveShuffleSeed(seed, 0x90ABCDEF))
+    };
+}
+
 // --- 定数・システム管理 ---
 const PREFIX = 'SekigaeKun_v6_'; 
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v1';
+const UINT32_MAX = 0xFFFFFFFF;
+/**
+ * seed 指定時の再現性を優先した探索上限。時間ではなく試行回数で停止する。
+ * 20秒は別途、結果を採用しない安全停止としてだけ使用する。
+ */
+const SEEDED_SEARCH_BUDGETS = Object.freeze({
+    initialStarts: 5,
+    initialNodesPerStart: 40000,
+    annealingProposalsPerStart: 15000,
+    hillProposals: 30000,
+    yieldEveryInitialNodes: 500,
+    yieldEveryProposals: 3000,
+    safetyCheckInterval: 256
+});
 
 /** 座席枠内固定レイアウト（上から順・詰め表示） */
 const SEAT_LAYOUT_FIXED_META = [
@@ -273,6 +346,12 @@ function initFormArrowNavigation() {
             applyHistorySelectionToBoard();
             syncHistoryMemoInput();
             updateDeskTitleDisplay();
+        });
+    }
+    const shuffleSeedEl = getShuffleSeedInputElement();
+    if (shuffleSeedEl) {
+        shuffleSeedEl.addEventListener('input', () => {
+            shuffleSeedInput = String(shuffleSeedEl.value || '').trim();
         });
     }
     const importFile = document.getElementById('import-file');
@@ -776,6 +855,12 @@ let edgeMax = DEFAULT_EDGE_MAX;
 let inactiveSeatBackup = new Map();
 let exceptionMode = false, requiredExceptions = 0, targetExceptionGender = '', currentExceptions = new Set(), pendingStudents = null;
 let lastShuffleLog = null;
+/** 入力欄は任意指定、lastUsed は直近の実行seed。 */
+let shuffleSeedInput = '';
+let lastUsedShuffleSeed = null;
+/** 実行中のseed情報と、プレビューを確定したとき履歴へ渡す情報。 */
+let activeShuffleRun = null;
+let pendingHistoryShuffleMeta = null;
 let isShuffleCancelled = false;
 // 市松シャッフルの「左上席」性別オフセット。0: 左上=男子, 1: 左上=女子
 let checkerboardOffset = 0;
@@ -793,6 +878,44 @@ let seatTrackTouchTimer = null;
 let seatTrackLongPressTriggered = false;
 let suppressSeatClickUntil = 0;
 let activeColorPaletteTarget = 0;
+
+function getShuffleSeedInputElement() {
+    return document.getElementById('shuffle-seed-input');
+}
+
+function syncShuffleSeedControlsFromState() {
+    const input = getShuffleSeedInputElement();
+    if (input) input.value = shuffleSeedInput;
+    const used = document.getElementById('shuffle-seed-used');
+    if (used) used.textContent = lastUsedShuffleSeed == null ? '—' : String(lastUsedShuffleSeed);
+}
+
+function resolveShuffleRunFromInput() {
+    const input = getShuffleSeedInputElement();
+    shuffleSeedInput = input ? String(input.value || '').trim() : shuffleSeedInput;
+    const parsed = parseShuffleSeed(shuffleSeedInput);
+    if (!parsed.ok) {
+        showAlert(parsed.message);
+        if (input) input.focus();
+        return null;
+    }
+    const seed = parsed.isSpecified ? parsed.seed : createAutomaticShuffleSeed();
+    lastUsedShuffleSeed = seed;
+    syncShuffleSeedControlsFromState();
+    return {
+        seed,
+        seedSource: parsed.isSpecified ? 'specified' : 'automatic',
+        algorithmVersion: SHUFFLE_ALGORITHM_VERSION
+    };
+}
+
+function clearPendingHistoryShuffleMeta() {
+    pendingHistoryShuffleMeta = null;
+}
+
+function markPendingShuffleAsManuallyModified() {
+    if (pendingHistoryShuffleMeta) pendingHistoryShuffleMeta.manuallyModified = true;
+}
 
 // 盤面のDOM参照を統一し、同じquerySelector文字列の重複を減らす。
 function getSeatElement(index) {
@@ -2405,6 +2528,7 @@ function resetPlacement() {
     if (previewAssignment) {
         previewAssignment = null;
         pendingHistoryMemoOnCommit = null;
+        clearPendingHistoryShuffleMeta();
         if (previewInactiveSeatsBackup) {
             inactiveSeats = previewInactiveSeatsBackup;
             previewInactiveSeatsBackup = null;
@@ -2757,6 +2881,7 @@ function executeSort() {
     for (let i = 0; i < sortedStudents.length; i++) tempAssign[validScanOrder[i]] = sortedStudents[i];
 
     previewAssignment = tempAssign;
+    clearPendingHistoryShuffleMeta();
     setActionButtons(true, false);
     showAlert(`整列が完了しました。プレビューを確認し、「座席を確定」を押してください。`, "success");
     renderAssignments();
@@ -2834,10 +2959,10 @@ function calcAllowedSeatsForStudent(s, isCheckerboard, bounds) {
 
 function yieldToBrowser() { return new Promise(resolve => setTimeout(resolve, 0)); }
 
-function shuffleArray(arr) {
+function shuffleArray(arr, random) {
     const clone = [...arr];
     for (let i = clone.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(random() * (i + 1));
         [clone[i], clone[j]] = [clone[j], clone[i]];
     }
     return clone;
@@ -3009,18 +3134,33 @@ function abortShuffleWithMessage(message = "シャッフルを中止しました
     hideProgressModal();
     isCalculating = false;
     isShuffleCancelled = false;
+    activeShuffleRun = null;
     return showAlert(message, type);
 }
 function handleShuffleUnexpectedError(error) {
     console.error(error);
     hideProgressModal();
-    showAlert("予期せぬエラーが発生しました。設定を見直すかリロードしてください。");
+    if (error && error.message === 'SEED_SEARCH_TIMEOUT') {
+        showAlert("20秒以内に決定的な探索を完了できなかったため、結果を採用せず中止しました。条件を緩めて再実行してください。", 'warning');
+    } else {
+        showAlert("予期せぬエラーが発生しました。設定を見直すかリロードしてください。");
+    }
     cancelExceptionMode();
     isCalculating = false;
     isShuffleCancelled = false;
+    activeShuffleRun = null;
 }
 function finalizeShuffleSuccess(bestAssign, finalScore) {
     previewAssignment = bestAssign;
+    if (activeShuffleRun) {
+        pendingHistoryShuffleMeta = {
+            seed: activeShuffleRun.seed,
+            seedSource: activeShuffleRun.seedSource,
+            algorithmVersion: activeShuffleRun.algorithmVersion,
+            manuallyModified: false
+        };
+    }
+    activeShuffleRun = null;
     setActionButtons(true, true);
     if (finalScore > 0) {
         showAlert(`シャッフル完了。\n絶対制約を守ったうえで、優先ルール違反を最小化しました。詳細は「詳細ログ」を確認してください。`, "warning");
@@ -3066,7 +3206,7 @@ function buildScoreContext(bounds, pastMaps) {
         softSeatBase, softSeatStep
     };
 }
-function buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineContext) {
+function buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineContext, randomStreams) {
     const bounds = getGridBoundaries();
     const pastMaps = buildPastConstraintMaps(tempStudents, histories);
     const scoreContext = buildScoreContext(bounds, pastMaps);
@@ -3083,12 +3223,12 @@ function buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineCont
         activeSeats,
         tempStudents,
         canPlaceAt,
-        totalEndDeadline: timelineContext.totalEndDeadline,
-        phaseAEnd: timelineContext.phaseAEnd,
-        totalStartTime: timelineContext.totalStartTime
+        random: randomStreams.initial,
+        safetyContext: timelineContext
     };
     const annealingContext = {
-        totalEndDeadline: timelineContext.totalEndDeadline,
+        random: randomStreams.annealing,
+        safetyContext: timelineContext,
         evaluateAssignment,
         isSwapHardValid: swapValidators.isSwapHardValid,
         canSwapByCheckerboardRule: swapValidators.canSwapByCheckerboardRule,
@@ -3282,15 +3422,18 @@ function formatConstraintProgressHtml(details, hasWindowEdge, hasCorridorEdge) {
 async function buildInitialByBacktracking(attemptIndex, context) {
     const assignment = new Array(TOTAL_SEATS).fill(null);
     const availableSeats = new Set(context.activeSeats);
-    let seedList = shuffleArray([...context.tempStudents]);
-    for (let r = 0; r < attemptIndex; r++) seedList = shuffleArray(seedList);
+    let seedList = shuffleArray([...context.tempStudents], context.random);
+    for (let r = 0; r < attemptIndex; r++) seedList = shuffleArray(seedList, context.random);
     const unassigned = seedList;
-    let loopCounter = 0;
+    let nodeCount = 0;
 
     async function dfs() {
         if (isShuffleCancelled) return false;
-        if (performance.now() > context.totalEndDeadline) return false;
-        if (performance.now() > context.phaseAEnd) return false;
+        nodeCount++;
+        if (nodeCount > SEEDED_SEARCH_BUDGETS.initialNodesPerStart) return false;
+        if (nodeCount % SEEDED_SEARCH_BUDGETS.safetyCheckInterval === 0 && performance.now() > context.safetyContext.totalEndDeadline) {
+            throw new Error('SEED_SEARCH_TIMEOUT');
+        }
         if (unassigned.length === 0) return true;
 
         let bestIdx = -1;
@@ -3311,7 +3454,7 @@ async function buildInitialByBacktracking(attemptIndex, context) {
 
         if (!bestDomain || bestDomain.length === 0) return false;
         const selected = unassigned.splice(bestIdx, 1)[0];
-        const seatsToTry = shuffleArray(bestDomain);
+        const seatsToTry = shuffleArray(bestDomain, context.random);
 
         for (const seatIdx of seatsToTry) {
             assignment[seatIdx] = selected;
@@ -3334,9 +3477,8 @@ async function buildInitialByBacktracking(attemptIndex, context) {
         }
 
         unassigned.splice(bestIdx, 0, selected);
-        loopCounter++;
-        if (loopCounter % 100 === 0) {
-            const progress = Math.min(25, ((performance.now() - context.totalStartTime) / 5000) * 25);
+        if (nodeCount % SEEDED_SEARCH_BUDGETS.yieldEveryInitialNodes === 0) {
+            const progress = Math.min(25, ((attemptIndex + Math.min(1, nodeCount / SEEDED_SEARCH_BUDGETS.initialNodesPerStart)) / SEEDED_SEARCH_BUDGETS.initialStarts) * 25);
             showProgressModal("初期解を構築中...", progress);
             await yieldToBrowser();
         }
@@ -3350,8 +3492,8 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
     const initialSolutions = [];
     for (let attempt = 0; attempt < maxStarts; attempt++) {
         if (isShuffleCancelled) return null;
-        if (performance.now() >= timelineContext.phaseAEnd || performance.now() >= timelineContext.totalEndDeadline) break;
-        const progressA = Math.min(22, ((performance.now() - timelineContext.totalStartTime) / 5000) * 22);
+        if (performance.now() >= timelineContext.totalEndDeadline) throw new Error('SEED_SEARCH_TIMEOUT');
+        const progressA = Math.min(25, (attempt / maxStarts) * 25);
         showProgressModal(`初期解を構築中 (${attempt + 1}/${maxStarts})...`, progressA);
         await yieldToBrowser();
         const sol = await buildInitialByBacktracking(attempt, backtrackingContext);
@@ -3360,10 +3502,10 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
     return initialSolutions;
 }
 /**
- * 1本の初期解に対し、[localStart, localEnd) を独立した時間窓として焼きなましを実行。
- * 温度は localStart→localEnd に合わせて減衰する。
+ * 1本の初期解に対し、固定回数の焼きなましを実行する。
+ * 温度は試行番号に合わせて減衰するため、実行環境の性能に依存しない。
  */
-async function runPhaseBSimulatedAnnealing(initialAssign, localStart, localEnd, runIdx, runTotal, context) {
+async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, context) {
     let currentAssign = [...initialAssign];
     let currentScore = context.evaluateAssignment(currentAssign).totalScore;
     let finalScore = currentScore;
@@ -3372,12 +3514,15 @@ async function runPhaseBSimulatedAnnealing(initialAssign, localStart, localEnd, 
 
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0, loopCount = 0;
 
-    while (performance.now() < localEnd && performance.now() < context.totalEndDeadline && currentScore > 0) {
+    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentScore > 0; proposalIndex++) {
         if (isShuffleCancelled) return null;
+        if (proposalIndex % SEEDED_SEARCH_BUDGETS.safetyCheckInterval === 0 && performance.now() > context.safetyContext.totalEndDeadline) {
+            throw new Error('SEED_SEARCH_TIMEOUT');
+        }
         if (swappableIndicesLocal.length < 2) break;
 
-        let r1 = Math.floor(Math.random() * swappableIndicesLocal.length);
-        let r2 = Math.floor(Math.random() * swappableIndicesLocal.length);
+        let r1 = Math.floor(context.random() * swappableIndicesLocal.length);
+        let r2 = Math.floor(context.random() * swappableIndicesLocal.length);
         if (r1 === r2) continue;
         const idx1 = swappableIndicesLocal[r1], idx2 = swappableIndicesLocal[r2];
         const s1 = currentAssign[idx1], s2 = currentAssign[idx2];
@@ -3393,13 +3538,11 @@ async function runPhaseBSimulatedAnnealing(initialAssign, localStart, localEnd, 
         }
 
         const newScore = context.evaluateAssignment(currentAssign).totalScore;
-        const elapsedRatio = Math.max(0, Math.min(1,
-            (performance.now() - localStart) / Math.max(1, (localEnd - localStart))
-        ));
+        const elapsedRatio = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
         const t0 = 1800, t1 = 1;
         const temperature = Math.max(t1, t0 * Math.pow(t1 / t0, elapsedRatio));
         const delta = newScore - currentScore;
-        const acceptWorse = delta > 0 && Math.random() < Math.exp(-delta / temperature);
+        const acceptWorse = delta > 0 && context.random() < Math.exp(-delta / temperature);
 
         if (delta <= 0 || acceptWorse) {
             currentScore = newScore;
@@ -3415,9 +3558,8 @@ async function runPhaseBSimulatedAnnealing(initialAssign, localStart, localEnd, 
         }
 
         loopCount++;
-        if (loopCount % 3000 === 0) {
-            const slotSpan = Math.max(1e-6, localEnd - localStart);
-            const withinSlot = Math.max(0, Math.min(1, (performance.now() - localStart) / slotSpan));
+        if (loopCount % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
+            const withinSlot = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
             const progress = 25 + Math.min(65, ((runIdx + withinSlot) / runTotal) * 65);
             const detailsNow = context.evaluateAssignment(bestAssign);
             context.showProgress({
@@ -3437,23 +3579,15 @@ async function runPhaseBSimulatedAnnealing(initialAssign, localStart, localEnd, 
         acceptedWorse
     };
 }
-async function runPhaseBMultiStart(initialSolutions, phaseBStart, phaseBHardEnd, annealingContext) {
+async function runPhaseBMultiStart(initialSolutions, annealingContext) {
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0;
     const saResults = [];
     const k = initialSolutions.length;
-    let timeCursor = phaseBStart;
     for (let i = 0; i < k; i++) {
         if (isShuffleCancelled) return null;
         await yieldToBrowser();
-        const remainingRuns = k - i;
-        const budgetLeft = phaseBHardEnd - timeCursor;
-        if (budgetLeft <= 0) break;
-        const thisSlot = budgetLeft / remainingRuns;
-        const localStart = timeCursor;
-        const localEnd = timeCursor + thisSlot;
-        timeCursor = localEnd;
-
-        const res = await runPhaseBSimulatedAnnealing(initialSolutions[i], localStart, localEnd, i, k, annealingContext);
+        if (performance.now() >= annealingContext.safetyContext.totalEndDeadline) throw new Error('SEED_SEARCH_TIMEOUT');
+        const res = await runPhaseBSimulatedAnnealing(initialSolutions[i], i, k, annealingContext);
         if (!res) return null;
         saResults.push(res);
         swapTrials += res.swapTrials;
@@ -3462,13 +3596,16 @@ async function runPhaseBMultiStart(initialSolutions, phaseBStart, phaseBHardEnd,
     }
     return { saResults, swapTrials, swapImprovements, acceptedWorse, k };
 }
-async function runPhaseCHillClimb(bestAssign, finalScore, timelineContext, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
+async function runPhaseCHillClimb(bestAssign, finalScore, safetyContext, random, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
     const swappableIndices = collectSwappableIndices(bestAssign);
     let hillLoop = 0;
-    while (performance.now() < timelineContext.totalEndDeadline && finalScore > 0) {
+    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.hillProposals && finalScore > 0; proposalIndex++) {
         if (isShuffleCancelled) return null;
+        if (proposalIndex % SEEDED_SEARCH_BUDGETS.safetyCheckInterval === 0 && performance.now() > safetyContext.totalEndDeadline) {
+            throw new Error('SEED_SEARCH_TIMEOUT');
+        }
         if (swappableIndices.length < 2) break;
-        let r1 = Math.floor(Math.random() * swappableIndices.length), r2 = Math.floor(Math.random() * swappableIndices.length);
+        let r1 = Math.floor(random() * swappableIndices.length), r2 = Math.floor(random() * swappableIndices.length);
         if (r1 === r2) continue;
         const idx1 = swappableIndices[r1], idx2 = swappableIndices[r2];
         const s1 = bestAssign[idx1], s2 = bestAssign[idx2];
@@ -3485,7 +3622,7 @@ async function runPhaseCHillClimb(bestAssign, finalScore, timelineContext, evalu
             bestAssign[idx1] = s1; bestAssign[idx2] = s2;
         }
         hillLoop++;
-        if (hillLoop % 3000 === 0) {
+        if (hillLoop % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
             const detailsNow = evaluateAssignment(bestAssign);
             showProgressModal({ phase: '最終微調整中', score: finalScore }, 95, formatConstraintProgressHtml(detailsNow, hasWindowEdge, hasCorridorEdge));
             await yieldToBrowser();
@@ -3717,7 +3854,10 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
         guardBothEdgesWindowForShuffle(() => { prepareShuffle(isCheckerboard, { skipEdgeGuard: true }); });
         return;
     }
+    const shuffleRun = resolveShuffleRunFromInput();
+    if (!shuffleRun) return;
     isShuffleCancelled = false;
+    activeShuffleRun = shuffleRun;
     isCalculating = true; hideAlert(); setActionButtons(false, false);
     // 非市松シャッフルではオフセットを使わないため確実に0へ。市松モードは openCheckerboardPatternModal が事前にセット済み。
     if (!isCheckerboard) checkerboardOffset = 0;
@@ -3778,7 +3918,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
         showAlert(`配置不能：絶対制約（備考欄/全体ルール/市松）により候補席が0件の生徒がいます。<br>${detail}${conflicts.length > 5 ? ' ほか' : ''}`);
         return;
     }
-    if (isCheckerboard) checkGenderBalance(tempStudents); else await executeSmartShuffle(tempStudents, false);
+    if (isCheckerboard) checkGenderBalance(tempStudents); else await executeSmartShuffle(tempStudents, false, shuffleRun);
 }
 
 function checkGenderBalance(tempStudents) {
@@ -3788,7 +3928,7 @@ function checkGenderBalance(tempStudents) {
     const boyDiff = boys - boySeats, girlDiff = girls - girlSeats;
     if (boyDiff > 0) showExceptionModal('男', boyDiff, tempStudents);
     else if (girlDiff > 0) showExceptionModal('女', girlDiff, tempStudents);
-    else executeSmartShuffle(tempStudents, true);
+    else executeSmartShuffle(tempStudents, true, activeShuffleRun);
 }
 
 function showExceptionModal(targetGender, count, tempStudents) {
@@ -3848,7 +3988,7 @@ function updateExceptionMessage() {
         exceptionMode = false; document.body.classList.remove('exception-mode-active'); hideAlert();
         initGrid();
         inactiveSeats.forEach(idx => { getSeatElement(idx).classList.add('inactive'); });
-        isCalculating = true; executeSmartShuffle(pendingStudents, true);
+        isCalculating = true; executeSmartShuffle(pendingStudents, true, activeShuffleRun);
     }
 }
 
@@ -3859,7 +3999,8 @@ function showLogModal() {
         <div class="log-section">
             <h3>AI最適化プロセス</h3>
             <ul class="log-list">
-                <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （最大20秒）</li>
+                ${log.seed != null ? `<li>・使用seed：<b>${log.seed}</b>${log.seedSource === 'automatic' ? '（自動生成）' : '（指定）'} ／ アルゴリズム <b>${escapeHtml(log.algorithmVersion || '')}</b></li>` : ''}
+                <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （20秒は安全停止。探索回数は固定）</li>
                 <li>・初期解生成（MRVバックトラッキング）：<b>${(log.phaseATime || 0).toFixed(2)} 秒</b>${log.multiStartRuns != null ? `（生成 <b>${log.multiStartRuns}</b> 通り）` : ''}</li>
                 <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : ''}</li>
                 <li>・最終微調整（山登り）：<b>${(log.phaseCTime || 0).toFixed(2)} 秒</b></li>
@@ -3965,16 +4106,18 @@ function showLogModal() {
 
 // ここから後半は既存ロジック（挙動維持のため変更最小）
 // eslint-disable-next-line no-inner-declarations
-async function executeSmartShuffle(tempStudents, isCheckerboard) {
+async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
     try {
+        if (!shuffleRun || !Number.isInteger(shuffleRun.seed)) {
+            throw new Error('SHUFFLE_SEED_MISSING');
+        }
         const totalStartTime = performance.now();
         const maxDurationMs = 20000;
         const timelineContext = {
             totalStartTime,
-            phaseAEnd: totalStartTime + 5000,
-            phaseBEnd: totalStartTime + 18000,
             totalEndDeadline: totalStartTime + maxDurationMs
         };
+        const randomStreams = createShuffleRandomStreams(shuffleRun.seed);
         showProgressModal("準備中...", 0);
         await yieldToBrowser();
         if (isShuffleCancelled) {
@@ -3983,11 +4126,11 @@ async function executeSmartShuffle(tempStudents, isCheckerboard) {
 
         // 1) 準備フェーズ（入力同期・評価/配置コンテキスト構築）
         syncSoftScoresFromInputs();
-        const executionContext = buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineContext);
+        const executionContext = buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineContext, randomStreams);
         if (!executionContext) return;
         const { evaluateAssignment, swapValidators, backtrackingContext, annealingContext, hasWindowEdge, hasCorridorEdge } = executionContext;
 
-        const MULTI_START_TARGET = 5;
+        const MULTI_START_TARGET = SEEDED_SEARCH_BUDGETS.initialStarts;
         // 2) 初期解構築フェーズ（複数スタート候補をバックトラックで生成）
 
         const timelineMetrics = { phaseAStart: performance.now(), phaseAEndActual: 0, tAfterA: 0, phaseBEndActual: 0 };
@@ -4000,11 +4143,8 @@ async function executeSmartShuffle(tempStudents, isCheckerboard) {
         }
 
         timelineMetrics.tAfterA = performance.now();
-        const phaseBGlobalEnd = timelineContext.phaseBEnd;
-        const phaseBHardEnd = Math.min(phaseBGlobalEnd, timelineContext.totalEndDeadline);
-
         // 3) 焼きなましフェーズ（各初期解を時間スロットで改善）
-        const phaseBRun = await runPhaseBMultiStart(initialSolutions, timelineMetrics.tAfterA, phaseBHardEnd, annealingContext);
+        const phaseBRun = await runPhaseBMultiStart(initialSolutions, annealingContext);
         if (!phaseBRun) return abortShuffleWithMessage();
         const { saResults, swapTrials, swapImprovements, acceptedWorse, k } = phaseBRun;
 
@@ -4025,7 +4165,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard) {
         timelineMetrics.phaseBEndActual = performance.now();
 
         // 4) 最終微調整フェーズ（短時間ヒルクライム）
-        const phaseCRun = await runPhaseCHillClimb(bestAssign, finalScore, timelineContext, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
+        const phaseCRun = await runPhaseCHillClimb(bestAssign, finalScore, timelineContext, randomStreams.hill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
         if (!phaseCRun) return abortShuffleWithMessage();
         bestAssign = phaseCRun.bestAssign;
         finalScore = phaseCRun.finalScore;
@@ -4044,7 +4184,11 @@ async function executeSmartShuffle(tempStudents, isCheckerboard) {
             finalScore: finalScore,
             details: evaluateAssignment(bestAssign),
             multiStartRuns: k,
-            eliteIndex: saResults.length > 0 ? eliteIdx : 0
+            eliteIndex: saResults.length > 0 ? eliteIdx : 0,
+            seed: shuffleRun.seed,
+            seedSource: shuffleRun.seedSource,
+            algorithmVersion: shuffleRun.algorithmVersion,
+            searchBudgets: { ...SEEDED_SEARCH_BUDGETS }
         };
 
         finalizeShuffleSuccess(bestAssign, finalScore);
@@ -4122,14 +4266,18 @@ function commitSeats() {
     seatAssignment = [...previewAssignment]; previewAssignment = null;
     const memo = pendingHistoryMemoOnCommit || '';
     pendingHistoryMemoOnCommit = null;
+    const shuffleMeta = pendingHistoryShuffleMeta ? { ...pendingHistoryShuffleMeta } : null;
+    clearPendingHistoryShuffleMeta();
     previewInactiveSeatsBackup = null;
     setActionButtons(false, false);
-    histories.unshift({
+    const historyEntry = {
         date: new Date().toLocaleString(),
         assignment: [...seatAssignment],
         memo,
         inactiveSeats: Array.from(inactiveSeats)
-    });
+    };
+    if (shuffleMeta) Object.assign(historyEntry, shuffleMeta);
+    histories.unshift(historyEntry);
     if(histories.length > 20) histories.pop();
     saveCurrentClassData(); updateHistorySelect(); renderAssignments(); showAlert("座席を確定し、履歴に保存しました。", "success");
 }
@@ -4138,6 +4286,7 @@ function cancelPreview() {
     if (!previewAssignment) return;
     previewAssignment = null;
     pendingHistoryMemoOnCommit = null;
+    clearPendingHistoryShuffleMeta();
     if (previewInactiveSeatsBackup) {
         inactiveSeats = previewInactiveSeatsBackup;
         previewInactiveSeatsBackup = null;
@@ -4599,6 +4748,7 @@ function confirmExcelImport() {
     inactiveSeats = inactive;
     previewAssignment = assignment;
     pendingHistoryMemoOnCommit = EXCEL_IMPORT_MEMO;
+    clearPendingHistoryShuffleMeta();
     setActionButtons(true, false);
     closeExcelImportModal();
     updateCounters();
@@ -4954,6 +5104,7 @@ function applyPreviewSwap(idx1, idx2) {
     const temp = arr[idx1];
     arr[idx1] = arr[idx2];
     arr[idx2] = temp;
+    markPendingShuffleAsManuallyModified();
     renderAssignments();
 }
 
@@ -5036,6 +5187,8 @@ function saveCurrentClassData() {
         ...exportSoftScoreSettings(),
         ...exportEdgeSettings(),
         inactiveSeats: Array.from(inactiveSeats), assignment: seatAssignment, histories: histories, colors: colors,
+        shuffleSeedInput: shuffleSeedInput,
+        lastUsedShuffleSeed: lastUsedShuffleSeed,
         genderBorderData: genderBorderData,
         printInactiveMode: printInactiveMode === 'frame' ? 'frame' : 'hide'
     };
@@ -5077,11 +5230,17 @@ function loadCurrentClassData() {
             syncClassScopedControlsFromGlobals();
             inactiveSeats = new Set(data.inactiveSeats || []); seatAssignment = data.assignment || new Array(TOTAL_SEATS).fill(null);
             printInactiveMode = data.printInactiveMode === 'frame' ? 'frame' : 'hide';
+            shuffleSeedInput = typeof data.shuffleSeedInput === 'string' ? data.shuffleSeedInput : '';
+            lastUsedShuffleSeed = coerceStoredShuffleSeed(data.lastUsedShuffleSeed);
             histories = (data.histories || []).map(h => ({
                 date: h.date || '',
                 assignment: h.assignment || [],
                 memo: h.memo || '',
-                inactiveSeats: Array.isArray(h.inactiveSeats) ? h.inactiveSeats : undefined
+                inactiveSeats: Array.isArray(h.inactiveSeats) ? h.inactiveSeats : undefined,
+                seed: coerceStoredShuffleSeed(h.seed),
+                seedSource: h.seedSource === 'specified' || h.seedSource === 'automatic' ? h.seedSource : undefined,
+                algorithmVersion: typeof h.algorithmVersion === 'string' ? h.algorithmVersion : undefined,
+                manuallyModified: h.manuallyModified === true
             }));
             if(data.colors) {
                 const colorFallback = ['#000000','#666666','#000080','#0000ff','#008000','#ff0000'];
@@ -5107,6 +5266,8 @@ function loadCurrentClassData() {
     } else {
         currentStudents = []; inactiveSeats.clear(); seatAssignment = new Array(TOTAL_SEATS).fill(null); histories = [];
         printInactiveMode = 'hide';
+        shuffleSeedInput = '';
+        lastUsedShuffleSeed = null;
         resetClassScopedSettingsUI();
         applySeatLayoutToUI(null);
     }
@@ -5114,6 +5275,7 @@ function loadCurrentClassData() {
     updateColors(); updateHistorySelect(); updateCounters();
     updateClassNameDisplay();
     updatePrintInactiveToggleUi();
+    syncShuffleSeedControlsFromState();
     renderAssignments();
     syncConstraintsBaselineFromPersisted();
 }
@@ -5133,7 +5295,8 @@ function updateHistorySelect() {
         const option = document.createElement('option');
         option.value = index;
         const memo = (historyEntry.memo || '').trim();
-        option.text = memo ? `${historyEntry.date} │ ${memo}` : historyEntry.date;
+        const seedLabel = historyEntry.seed == null ? '' : `seed ${historyEntry.seed}${historyEntry.manuallyModified ? '（手動変更あり）' : ''}`;
+        option.text = [historyEntry.date, memo, seedLabel].filter(Boolean).join(' │ ');
         historySelect.appendChild(option);
     });
     if (prevValue !== '' && histories[prevValue]) historySelect.value = prevValue;

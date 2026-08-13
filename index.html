@@ -278,6 +278,13 @@
             </div>
         </div>
         
+        <div class="shuffle-seed-row">
+            <label for="shuffle-seed-input">再現用 seed（任意）</label>
+            <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
+            <span id="shuffle-seed-help">同じ条件とseedなら同じ配置を再現します</span>
+            <span class="shuffle-seed-used">今回使用: <output id="shuffle-seed-used">—</output></span>
+        </div>
+
         <div class="action-bar-bottom">
             <div class="flex-row" style="gap: 10px;">
                 <button class="btn btn-outline" style="padding: 10px 15px;" onclick="resetPlacement()">配置リセット</button>
@@ -624,7 +631,7 @@
             <div style="font-size:0.75em; color:#666; padding: 10px; background: #fff; border-radius: 6px; border: 1px solid #ddd;">
                 <b>AI最適化アルゴリズムについて</b><br>
                 NGペア（8近傍隣接禁止）は探索段階で除外する絶対制約です。<br>
-                そのうえで、前列重複→後列重複→過去ペア重複→窓側／廊下側重複→過去座席重複の順でスコアを集計し、最大20秒の最適化（初期解生成→焼きなまし→最終微調整）を実行します。
+                そのうえで、前列重複→後列重複→過去ペア重複→窓側／廊下側重複→過去座席重複の順でスコアを集計し、固定回数の最適化（初期解生成→焼きなまし→最終微調整）を実行します。20秒は結果を採用しない安全停止です。
             </div>
         </div>
     </div>

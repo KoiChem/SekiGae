@@ -639,6 +639,14 @@ body.exception-mode-active .settings-bottom { pointer-events: none; filter: gray
 /* --- 座席表 & 設定タブ --- */
 .action-bar { width: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; transition: opacity 0.3s; }
 .action-bar-top, .action-bar-bottom { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.shuffle-seed-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px; border: 1px solid #d7dee5; border-radius: 5px; background: #f8fafc; font-size: 0.82em; color: #475569; }
+.shuffle-seed-row label { font-weight: bold; color: var(--primary); }
+.shuffle-seed-row input { width: 150px; font-variant-numeric: tabular-nums; }
+.shuffle-seed-row #shuffle-seed-help { color: #64748b; }
+.shuffle-seed-used { margin-left: auto; font-weight: bold; color: #2c3e50; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+    .shuffle-seed-used { margin-left: 0; width: 100%; }
+}
 
 .classroom-wrapper {
     background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
