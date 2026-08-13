@@ -90,14 +90,17 @@ function createShuffleRandomStreams(seed) {
 const PREFIX = 'SekigaeKun_v6_'; 
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
-const SHUFFLE_ALGORITHM_VERSION = 'seed-v5-pair-reorganization';
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v6-diverse-elite-reheats';
 const UINT32_MAX = 0xFFFFFFFF;
 /**
- * 最初の探索ラウンドに必ず使う基準試行回数。非ゼロ解では、この後も時間上限まで
- * 再加熱探索を重ねる。seed は初期探索の順序を安定させる用途で、完全再現は保証しない。
+ * 初期解を広く生成してから、品質上位と配置が異なる候補だけを焼きなましへ進める。
+ * 非ゼロ解では、その候補群を再加熱で巡回する。seed は探索順の手がかりであり、
+ * 時間上限までの探索結果の完全再現は保証しない。
  */
 const SEEDED_SEARCH_BUDGETS = Object.freeze({
-    initialStarts: 5,
+    initialStarts: 20,
+    eliteStarts: 3,
+    diverseStarts: 3,
     initialNodesPerStart: 40000,
     annealingProposalsPerStart: 15000,
     hillProposals: 30000,
@@ -3472,24 +3475,6 @@ function compareSoftConstraintEvaluations(left, right) {
     return (Number(left.totalScore) || 0) - (Number(right.totalScore) || 0);
 }
 
-/**
- * 焼きなましで悪化を確率受理する際の距離。
- * 最終選抜と同じ辞書式順序で、最初に悪化した公平性指標だけを温度に対する差分として使う。
- */
-function getFairnessAnnealingWorseningMagnitude(candidate, current) {
-    const maxDiff = (Number(candidate.maxIndividualPenalty) || 0) - (Number(current.maxIndividualPenalty) || 0);
-    if (maxDiff !== 0) return Math.abs(maxDiff);
-
-    const candidateVector = getSortedIndividualPenaltyVector(candidate);
-    const currentVector = getSortedIndividualPenaltyVector(current);
-    const vectorLength = Math.max(candidateVector.length, currentVector.length);
-    for (let i = 0; i < vectorLength; i++) {
-        const diff = (candidateVector[i] || 0) - (currentVector[i] || 0);
-        if (diff !== 0) return Math.abs(diff);
-    }
-    const totalDiff = (Number(candidate.totalScore) || 0) - (Number(current.totalScore) || 0);
-    return Math.max(1, Math.abs(totalDiff));
-}
 function formatPenaltyPoints(value) {
     const num = Number(value) || 0;
     return Number.isInteger(num) ? String(num) : String(Math.round(num * 10) / 10);
@@ -3761,13 +3746,63 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
     }
     return initialSolutions;
 }
+
+/** 同じ生徒が同じ席にいる数ではなく、席の割り当てが異なる数を返す。大きいほど多様。 */
+function getAssignmentSeatDifference(left, right) {
+    let difference = 0;
+    for (let seatIdx = 0; seatIdx < TOTAL_SEATS; seatIdx++) {
+        const leftId = left[seatIdx] ? left[seatIdx].id : null;
+        const rightId = right[seatIdx] ? right[seatIdx].id : null;
+        if (leftId !== rightId) difference++;
+    }
+    return difference;
+}
+
+/**
+ * 初期解プールから、品質上位を残しつつ、それらから最も離れた配置を貪欲に追加する。
+ * 多様候補は「選ばれた候補のどれとも十分に違う」ことを優先し、同率なら品質で決める。
+ */
+function selectInitialSolutionsForAnnealing(initialSolutions, evaluateAssignment) {
+    const ranked = initialSolutions
+        .map((assignment, originalIndex) => ({ assignment, originalIndex, details: evaluateAssignment(assignment) }))
+        .sort((left, right) => compareSoftConstraintEvaluations(left.details, right.details) || left.originalIndex - right.originalIndex);
+    const eliteCount = Math.min(SEEDED_SEARCH_BUDGETS.eliteStarts, ranked.length);
+    const selected = ranked.slice(0, eliteCount);
+    const remaining = ranked.slice(eliteCount);
+    const targetCount = Math.min(ranked.length, SEEDED_SEARCH_BUDGETS.eliteStarts + SEEDED_SEARCH_BUDGETS.diverseStarts);
+
+    while (selected.length < targetCount && remaining.length > 0) {
+        let bestRemainingIndex = 0;
+        let greatestNearestDifference = -1;
+        for (let index = 0; index < remaining.length; index++) {
+            const candidate = remaining[index];
+            const nearestDifference = Math.min(...selected.map(chosen => getAssignmentSeatDifference(candidate.assignment, chosen.assignment)));
+            const currentBest = remaining[bestRemainingIndex];
+            const isMoreDiverse = nearestDifference > greatestNearestDifference;
+            const isSameDiversityButHigherQuality = nearestDifference === greatestNearestDifference
+                && compareSoftConstraintEvaluations(candidate.details, currentBest.details) < 0;
+            if (isMoreDiverse || isSameDiversityButHigherQuality) {
+                bestRemainingIndex = index;
+                greatestNearestDifference = nearestDifference;
+            }
+        }
+        selected.push(remaining.splice(bestRemainingIndex, 1)[0]);
+    }
+
+    return {
+        entries: selected,
+        eliteCount,
+        diverseCount: selected.length - eliteCount
+    };
+}
 /**
  * 1本の初期解に対し、1ラウンド分の焼きなましを実行する。
- * 温度はラウンド内の試行番号に合わせて減衰し、非ゼロ解ではこのラウンドを再加熱して繰り返す。
+ * 温度は合計ペナルティの悪化量に対して減衰させ、最良解の採用だけは公平性順序で行う。
  */
 async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, context) {
     let currentAssign = [...initialAssign];
     const initialDetails = context.evaluateAssignment(currentAssign);
+    let currentScore = initialDetails.totalScore;
     let currentDetails = initialDetails;
     let bestDetails = initialDetails;
     let finalScore = bestDetails.totalScore;
@@ -3778,7 +3813,7 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
     let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0, twoPairAcceptedWorse = 0;
 
-    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentDetails.totalScore > 0 && hasSearchTimeRemaining(context.safetyContext); proposalIndex++) {
+    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentScore > 0 && hasSearchTimeRemaining(context.safetyContext); proposalIndex++) {
         if (isShuffleCancelled) return null;
         if (swappableIndicesLocal.length < 2) break;
         let candidate;
@@ -3823,24 +3858,25 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
         if (!isTwoPairReorganization && !context.isAssignmentHardValid(candidate)) continue;
 
         if (!candidateDetails) candidateDetails = context.evaluateAssignment(candidate);
+        const candidateScore = candidateDetails.totalScore;
         const elapsedRatio = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
         const t0 = 1800, t1 = 1;
         const temperature = Math.max(t1, t0 * Math.pow(t1 / t0, elapsedRatio));
-        const fairnessComparison = compareSoftConstraintEvaluations(candidateDetails, currentDetails);
-        const worseningMagnitude = fairnessComparison > 0 ? getFairnessAnnealingWorseningMagnitude(candidateDetails, currentDetails) : 0;
-        const acceptWorse = fairnessComparison > 0 && context.random() < Math.exp(-worseningMagnitude / temperature);
+        const scoreDelta = candidateScore - currentScore;
+        const acceptWorse = scoreDelta > 0 && context.random() < Math.exp(-scoreDelta / temperature);
 
-        if (fairnessComparison <= 0 || acceptWorse) {
+        if (scoreDelta <= 0 || acceptWorse) {
             currentAssign = candidate;
+            currentScore = candidateScore;
             currentDetails = candidateDetails;
-            if (fairnessComparison > 0) {
+            if (scoreDelta > 0) {
                 if (isTwoPairReorganization) twoPairAcceptedWorse++;
                 else if (isThreeCycle) threeCycleAcceptedWorse++;
                 else acceptedWorse++;
             }
         }
 
-        // 焼きなましの移動判定は連続した合計点を維持する一方、最良解は個人負担の公平性で選ぶ。
+        // 移動は合計点の地形を使い、最良解の保存だけは個人負担の公平性で選ぶ。
         if (compareSoftConstraintEvaluations(candidateDetails, bestDetails) < 0) {
             bestDetails = candidateDetails;
             finalScore = bestDetails.totalScore;
@@ -3965,19 +4001,23 @@ async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random
     return { bestAssign, bestDetails, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements, twoPairTrials, twoPairCandidates, twoPairImprovements };
 }
 /**
- * 非ゼロ解だけに行う追加の再加熱探索。時間優先のため、同一seedでも端末性能により
- * ラウンド数は変わり得るが、20秒近くまで別の探索経路を試して最良解を保持する。
+ * 非ゼロ解だけに行う追加の再加熱探索。選抜済みの複数経路を巡回して、
+ * 1本の最良解だけへ再スタートが偏ることを防ぐ。
  */
-async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, annealingContext) {
+async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, reheatStartAssignments, annealingContext) {
     let reheats = 0;
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0;
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
     let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0, twoPairAcceptedWorse = 0;
     const reheatContext = Object.assign({}, annealingContext, { phaseName: '追加再加熱探索' });
+    const restartAssignments = reheatStartAssignments.map(assignment => [...assignment]);
+    if (restartAssignments.length === 0) restartAssignments.push([...bestAssign]);
 
     while (bestDetails.totalScore > 0 && hasSearchTimeRemaining(annealingContext.safetyContext)) {
-        const result = await runPhaseBSimulatedAnnealing(bestAssign, 0, 1, reheatContext);
+        const restartIndex = reheats % restartAssignments.length;
+        const result = await runPhaseBSimulatedAnnealing(restartAssignments[restartIndex], restartIndex, restartAssignments.length, reheatContext);
         if (!result) return null;
+        restartAssignments[restartIndex] = [...result.bestAssign];
         reheats++;
         swapTrials += result.swapTrials;
         swapImprovements += result.swapImprovements;
@@ -4397,10 +4437,10 @@ function showLogModal() {
             <ul class="log-list">
                 ${log.seed != null ? `<li>・使用seed：<b>${log.seed}</b>${log.seedSource === 'automatic' ? '（自動生成）' : '（指定）'} ／ アルゴリズム <b>${escapeHtml(log.algorithmVersion || '')}</b></li>` : ''}
                 <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （ペナルティが残る場合は約20秒まで探索。0なら早期終了）</li>
-                <li>・初期解生成（MRVバックトラッキング）：<b>${(log.phaseATime || 0).toFixed(2)} 秒</b>${log.multiStartRuns != null ? `（生成 <b>${log.multiStartRuns}</b> 通り）` : ''}</li>
-                <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : ''}</li>
+                <li>・初期解生成（MRVバックトラッキング）：<b>${(log.phaseATime || 0).toFixed(2)} 秒</b>${log.initialSolutionRuns != null ? `（生成 <b>${log.initialSolutionRuns}</b> 通り）` : (log.multiStartRuns != null ? `（生成 <b>${log.multiStartRuns}</b> 通り）` : '')}</li>
+                <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.annealingStartRuns != null ? `（上位 <b>${log.eliteStartRuns}</b> 通り＋多様 <b>${log.diverseStartRuns}</b> 通りの計 <b>${log.annealingStartRuns}</b> 通り／エリートは選抜内第 <b>${(log.eliteIndex ?? 0) + 1}</b>）` : (log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : '')}</li>
                 <li>・最終微調整（山登り）：<b>${(log.phaseCTime || 0).toFixed(2)} 秒</b></li>
-                ${log.phaseDTime != null ? `<li>・追加再加熱探索：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（${log.reheatRuns.toLocaleString()} ラウンド）` : '（ペナルティ0のため不要）'}</li>` : ''}
+                ${log.phaseDTime != null ? `<li>・追加再加熱探索：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（${log.reheatRuns.toLocaleString()} ラウンド${log.reheatStartRuns ? `／${log.reheatStartRuns} 経路を巡回` : ''}）` : '（ペナルティ0のため不要）'}</li>` : ''}
                 <li>・試行スワップ：<b>${(log.swapTrials || 0).toLocaleString()}回</b>（悪化受理 ${(log.acceptedWorse || 0).toLocaleString()}回）</li>
                 ${log.threeCycleTrials != null ? `<li>・3人循環：<b>${log.threeCycleTrials.toLocaleString()}回</b>（SAでの改善 ${(log.threeCycleImprovements || 0).toLocaleString()}回、悪化受理 ${(log.threeCycleAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillThreeCycleTrials || 0).toLocaleString()}回、改善 ${(log.hillThreeCycleImprovements || 0).toLocaleString()}回）</li>` : ''}
                 ${log.twoPairTrials != null ? `<li>・2ペア4人再配置：<b>${log.twoPairTrials.toLocaleString()}回</b>（有効候補 ${(log.twoPairCandidates || 0).toLocaleString()}通り、SAでの改善 ${(log.twoPairImprovements || 0).toLocaleString()}回、悪化受理 ${(log.twoPairAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillTwoPairTrials || 0).toLocaleString()}回、有効候補 ${(log.hillTwoPairCandidates || 0).toLocaleString()}通り、改善 ${(log.hillTwoPairImprovements || 0).toLocaleString()}回）</li>` : ''}
@@ -4545,9 +4585,11 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             return abortShuffleWithMessage("ハード制約を満たす初期解を生成できませんでした。条件を緩めて再実行してください。", "error");
         }
 
+        const initialSelection = selectInitialSolutionsForAnnealing(initialSolutions, evaluateAssignment);
+        const annealingInitialSolutions = initialSelection.entries.map(entry => entry.assignment);
         timelineMetrics.tAfterA = performance.now();
-        // 3) 焼きなましフェーズ（各初期解を時間スロットで改善）
-        const phaseBRun = await runPhaseBMultiStart(initialSolutions, annealingContext);
+        // 3) 焼きなましフェーズ（品質上位3本と多様な3本を時間スロットで改善）
+        const phaseBRun = await runPhaseBMultiStart(annealingInitialSolutions, annealingContext);
         if (!phaseBRun) return abortShuffleWithMessage();
         const { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, twoPairTrials, twoPairCandidates, twoPairImprovements, twoPairAcceptedWorse, k } = phaseBRun;
 
@@ -4556,7 +4598,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         let bestDetails;
         let finalScore;
         if (saResults.length === 0) {
-            bestAssign = [...initialSolutions[0]];
+            bestAssign = [...annealingInitialSolutions[0]];
             bestDetails = evaluateAssignment(bestAssign);
             finalScore = bestDetails.totalScore;
         } else {
@@ -4569,6 +4611,9 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         }
 
         timelineMetrics.phaseBEndActual = performance.now();
+        const reheatStartAssignments = saResults.length > 0
+            ? saResults.map(result => [...result.bestAssign])
+            : annealingInitialSolutions.map(assignment => [...assignment]);
 
         // 4) 最終微調整フェーズ（短時間ヒルクライム）
         const phaseCRun = await runPhaseCHillClimb(bestAssign, bestDetails, timelineContext, randomStreams.hill, randomStreams.threeCycleHill, randomStreams.twoPairHill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
@@ -4577,9 +4622,12 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         bestDetails = phaseCRun.bestDetails;
         finalScore = phaseCRun.finalScore;
         timelineMetrics.phaseCEndActual = performance.now();
+        if (reheatStartAssignments.length > 0) {
+            reheatStartAssignments[Math.min(eliteIdx, reheatStartAssignments.length - 1)] = [...bestAssign];
+        }
 
-        // 5) 非ゼロ解では、残り時間を再加熱探索へ充てる。期限到達時にも最良解を採用する。
-        const phaseDRun = await runPhaseDTimePriorityReheats(bestAssign, bestDetails, annealingContext);
+        // 5) 非ゼロ解では、選抜6経路を巡回しつつ残り時間を再加熱探索へ充てる。
+        const phaseDRun = await runPhaseDTimePriorityReheats(bestAssign, bestDetails, reheatStartAssignments, annealingContext);
         if (!phaseDRun) return abortShuffleWithMessage();
         bestAssign = phaseDRun.bestAssign;
         bestDetails = phaseDRun.bestDetails;
@@ -4622,7 +4670,11 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             hillTwoPairImprovements: phaseCRun.twoPairImprovements,
             finalScore: finalScore,
             details: Object.assign(bestDetails, { individualPenaltyRows: buildIndividualPenaltyRows(bestAssign, bestDetails) }),
-            multiStartRuns: k,
+            initialSolutionRuns: initialSolutions.length,
+            annealingStartRuns: k,
+            eliteStartRuns: initialSelection.eliteCount,
+            diverseStartRuns: initialSelection.diverseCount,
+            reheatStartRuns: reheatStartAssignments.length,
             eliteIndex: saResults.length > 0 ? eliteIdx : 0,
             seed: shuffleRun.seed,
             seedSource: shuffleRun.seedSource,
