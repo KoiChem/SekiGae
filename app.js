@@ -781,6 +781,8 @@ let isShuffleCancelled = false;
 let checkerboardOffset = 0;
 /** 印刷プレビューでの空席表示: 'hide' 非表示 | 'frame' 枠のみ（ラベルなし） */
 let printInactiveMode = 'hide';
+/** 印刷用紙の向き。保存データ形式へは追加せず、起動時は従来通り A4 横とする。 */
+let printOrientation = 'landscape';
 // 例外席選択中、座席固定により反転禁止となっている席のインデックス集合
 let protectedExceptionSeats = new Set();
 /** バックアップ読込で選択モーダルを出すまで保持する解析済み JSON オブジェクト */
@@ -984,6 +986,7 @@ window.onload = () => {
     initColorPaletteUI();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
     updatePrintInactiveToggleUi();
+    applyPrintOrientation();
     initFormArrowNavigation();
     window.addEventListener('resize', () => {
         if (document.body.classList.contains('print-mode')) updatePrintToolbarInset();
@@ -1956,6 +1959,51 @@ function updatePrintInactiveToggleUi() {
     btn.classList.toggle('btn-outline', !isFrame);
 }
 
+function normalizePrintOrientation(value) {
+    return value === 'portrait' ? 'portrait' : 'landscape';
+}
+
+/**
+ * 印刷プレビューとブラウザ印刷の A4 向きを同期する。
+ * @page は要素のクラスで切り替えられないため、印刷専用 style の規則だけを更新する。
+ */
+function applyPrintOrientation() {
+    printOrientation = normalizePrintOrientation(printOrientation);
+    const isPortrait = printOrientation === 'portrait';
+    document.body.classList.toggle('print-orientation-portrait', isPortrait);
+    document.body.classList.toggle('print-orientation-landscape', !isPortrait);
+
+    document.querySelectorAll('input[name="print-orientation"]').forEach(input => {
+        input.checked = input.value === printOrientation;
+    });
+
+    const title = document.getElementById('print-preview-title');
+    if (title) {
+        title.textContent = `印刷プレビュー（${isPortrait ? 'A4縦' : 'A4横'}1枚にクラス名＋全座席を最適化）`;
+    }
+
+    const pageStyle = document.getElementById('print-page-orientation-style');
+    if (pageStyle) {
+        pageStyle.textContent = `@page { size: A4 ${printOrientation}; margin: 10mm; }`;
+    }
+}
+
+function setPrintOrientation(value) {
+    const nextOrientation = normalizePrintOrientation(value);
+    if (printOrientation === nextOrientation) {
+        applyPrintOrientation();
+        return;
+    }
+    printOrientation = nextOrientation;
+    applyPrintOrientation();
+    if (document.body.classList.contains('print-mode')) {
+        renderPrintLayout();
+        requestAnimationFrame(() => {
+            requestAnimationFrame(updatePrintToolbarInset);
+        });
+    }
+}
+
 function togglePrintInactiveDisplay() {
     printInactiveMode = printInactiveMode === 'frame' ? 'hide' : 'frame';
     updatePrintInactiveToggleUi();
@@ -1973,6 +2021,7 @@ function togglePrintMode() {
     const isPrintMode = document.body.classList.contains('print-mode');
     document.getElementById('print-overlay').style.display = isPrintMode ? 'block' : 'none';
     if (isPrintMode) {
+        applyPrintOrientation();
         updatePrintInactiveToggleUi();
         renderPrintLayout();
         requestAnimationFrame(() => {
@@ -2129,11 +2178,14 @@ function fitPrintGridLayout(grid, rows, cols) {
     const availableW = Math.max(50, classroomRect.width - (parseFloat(classStyle.paddingLeft) || 0) - (parseFloat(classStyle.paddingRight) || 0) - 2);
     const availableH = Math.max(50, classroomRect.height - deskRect.height - (parseFloat(classStyle.paddingTop) || 0) - (parseFloat(classStyle.paddingBottom) || 0) - gapY - 2);
 
-    // 行数が多い印刷では席をやや横長にし、左右余白を有効活用する
-    const seatHeightRatio = rows >= 7 ? 0.62 : rows >= 6 ? 0.68 : 0.75;
-
     // 列数/行数に応じて最大サイズを計算
     const maxCellWByWidth = (availableW - (cols - 1) * gapX) / cols;
+    // A4縦は横幅が狭く縦に余裕があるため、席を縦方向にも広げて用紙を有効活用する。
+    // A4横は従来の比率を維持する。
+    const portraitRatioBySpace = (availableH - (rows - 1) * gapY) / Math.max(1, rows * maxCellWByWidth);
+    const seatHeightRatio = printOrientation === 'portrait'
+        ? Math.min(1.25, Math.max(0.82, portraitRatioBySpace))
+        : (rows >= 7 ? 0.62 : rows >= 6 ? 0.68 : 0.75);
     let low = 1;
     let high = Math.max(1, maxCellWByWidth);
     for (let i = 0; i < 24; i++) {
@@ -2175,6 +2227,7 @@ function fitAllPrintSeatsSync() {
 
 /** 印刷を実行（フィット未完のまま空白で印刷されないよう、押下時に同期フィット → 印刷） */
 function executePrint() {
+    applyPrintOrientation();
     if (!document.body.classList.contains('print-mode')) {
         window.print();
         return;

@@ -953,6 +953,14 @@ table.data-table { width: 100%; border-collapse: collapse; margin-top: 5px; font
 .cheat-sheet { font-size: 0.8em; color: #444; padding: 12px; border-radius: 6px; border: 1px solid #ccc; line-height: 1.5; }
 
 #print-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; background: rgba(255, 255, 255, 0.97); z-index: 9999; padding: 10px; text-align: center; color: #1f2937; border-bottom: 1px solid #d1d5db; }
+.print-preview-title { font-size: 1.05em; font-weight: bold; margin-bottom: 8px; }
+.print-toolbar-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.print-orientation-options { display: inline-flex; align-items: center; gap: 10px; min-width: 0; margin: 0; padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; }
+.print-orientation-options legend { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.print-orientation-options label { display: inline-flex; align-items: center; gap: 4px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+.print-orientation-options input { margin: 0; }
+.print-toolbar-btn { font-size: 1.05em; padding: 8px 18px; }
+.print-preview-help { margin-top: 7px; color: #475569; font-size: 0.82em; }
 #print-root { display: none; }
 body.print-mode {
     background: #fff;
@@ -979,10 +987,18 @@ body.print-mode #print-root {
     box-sizing: border-box;
 }
 .print-page {
-    width: 277mm;
-    height: 190mm;
+    width: var(--print-page-width, 277mm);
+    height: var(--print-page-height, 190mm);
     margin: 0 auto;
     box-sizing: border-box;
+}
+body.print-orientation-landscape {
+    --print-page-width: 277mm;
+    --print-page-height: 190mm;
+}
+body.print-orientation-portrait {
+    --print-page-width: 190mm;
+    --print-page-height: 277mm;
 }
 .print-classroom {
     width: 100%;
@@ -1091,7 +1107,6 @@ body.print-mode #print-root {
 }
 
 @media print {
-    @page { size: A4 landscape; margin: 10mm; }
     body,
     body * {
         -webkit-print-color-adjust: exact !important;
@@ -1111,7 +1126,9 @@ body.print-mode #print-root {
     }
     body.print-mode .print-page {
         margin: 0;
-        width: 277mm;
-        height: 190mm;
+        width: var(--print-page-width, 277mm);
+        height: var(--print-page-height, 190mm);
+        break-inside: avoid;
+        page-break-inside: avoid;
     }
 }
