@@ -11,6 +11,19 @@
 </head>
 <body class="font-gothic">
 
+<div id="sample-mode-modal" class="modal-overlay sample-mode-modal" aria-modal="true" role="dialog" aria-labelledby="sample-mode-title">
+    <div class="modal-content sample-mode-modal-content">
+        <h2 id="sample-mode-title">動作確認用サンプルです</h2>
+        <p>このページは、あらかじめ用意したサンプルデータで動作を試すためのものです。</p>
+        <p><strong>ページを再読み込みすると、加えた変更は消え、毎回初期状態に戻ります。</strong></p>
+        <p class="sample-mode-modal-note">通常版の保存データには影響しません。</p>
+        <div class="sample-mode-modal-actions">
+            <a class="btn btn-outline" href="./index.html" target="_blank" rel="noopener">通常版を開く</a>
+            <button type="button" class="btn" onclick="closeSampleWelcomeModal()">サンプルを使い始める</button>
+        </div>
+    </div>
+</div>
+
 <div id="checkerboard-pattern-modal" class="modal-overlay">
     <div class="modal-content" style="max-width: 720px;">
         <h2 style="border:none; font-size:1.4em; color: #2c3e50; margin-bottom: 6px;">市松シャッフル：枠の選択</h2>
@@ -255,6 +268,11 @@
     <div class="print-preview-help">用紙の向きと視点を選択後、「印刷・PDF保存」を押してください</div>
 </div>
 <div id="print-root"></div>
+
+<div id="sample-mode-banner" class="sample-mode-banner no-print" hidden>
+    <span><strong>サンプル版</strong>：このページの変更は再読み込み時に初期状態へ戻ります。</span>
+    <a href="./index.html" target="_blank" rel="noopener">通常版を開く</a>
+</div>
 
 <div class="tab-header no-print">
     <button class="tab-btn active" onclick="switchTab('tab-main', event)">座席表・設定</button>

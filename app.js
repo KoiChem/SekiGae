@@ -90,7 +90,9 @@ function createShuffleRandomStreams(seed) {
 }
 
 // --- 定数・システム管理 ---
-const PREFIX = 'SekigaeKun_v6_'; 
+const SAMPLE_MODE = new URLSearchParams(window.location.search).get('sample') === '1';
+const PREFIX = SAMPLE_MODE ? 'SekigaeKun_sample_v6_' : 'SekigaeKun_v6_';
+const SAMPLE_BACKUP_URL = './meibo_sample.json';
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
 const SHUFFLE_ALGORITHM_VERSION = 'seed-v7-focused-reheat-repair';
@@ -1134,8 +1136,42 @@ function getCheckedRadioValue(name) {
     return el ? el.value : '';
 }
 
-// --- 初期化 ---
-window.onload = () => {
+/**
+ * sample.html は index.html?sample=1 へ遷移する。通常版とは別の接頭辞で保存し、
+ * 毎回このバックアップを読み込むため、通常版の保存データや前回のサンプル操作を残さない。
+ */
+async function loadSampleBackup() {
+    const sampleKeys = Object.keys(localStorage).filter(key => key.startsWith(PREFIX));
+    sampleKeys.forEach(key => localStorage.removeItem(key));
+
+    const response = await fetch(SAMPLE_BACKUP_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`sample backup request failed: ${response.status}`);
+    const backup = await response.json();
+    if (!backup || typeof backup !== 'object' || Array.isArray(backup)) {
+        throw new Error('sample backup is not an object');
+    }
+    Object.entries(backup).forEach(([key, value]) => {
+        const sampleKey = String(key).replace(/^Sekigae(Kun|App)_v\d+_/, PREFIX);
+        localStorage.setItem(sampleKey, String(value));
+    });
+}
+
+function showSampleWelcomeModal() {
+    if (!SAMPLE_MODE) return;
+    document.body.classList.add('sample-mode');
+    document.title = '席替えくん サンプル版';
+    const banner = document.getElementById('sample-mode-banner');
+    if (banner) banner.hidden = false;
+    const modal = document.getElementById('sample-mode-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeSampleWelcomeModal() {
+    const modal = document.getElementById('sample-mode-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function initializeApp() {
     initSeatLayoutTable();
     initColorPaletteUI();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
@@ -1154,6 +1190,20 @@ window.onload = () => {
             autoFitText();
         }, 120);
     });
+}
+
+// --- 初期化 ---
+window.onload = async () => {
+    if (SAMPLE_MODE) {
+        try {
+            await loadSampleBackup();
+        } catch (error) {
+            console.error('サンプルデータの読み込みに失敗しました。', error);
+            alert('サンプルデータの読み込みに失敗しました。ページを再読み込みしてください。');
+        }
+    }
+    initializeApp();
+    showSampleWelcomeModal();
 };
 
 /** テーブル DOM 変更時はバージョンを上げる（古いキャッシュでフォント列が欠けるのを防ぐ） */
