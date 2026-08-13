@@ -79,8 +79,10 @@ function createShuffleRandomStreams(seed) {
         initial: createSeededRandom(deriveShuffleSeed(seed, 0x1A2B3C4D)),
         annealing: createSeededRandom(deriveShuffleSeed(seed, 0x5E6F7788)),
         threeCycleAnnealing: createSeededRandom(deriveShuffleSeed(seed, 0x23456789)),
+        twoPairAnnealing: createSeededRandom(deriveShuffleSeed(seed, 0x456789AB)),
         hill: createSeededRandom(deriveShuffleSeed(seed, 0x90ABCDEF)),
-        threeCycleHill: createSeededRandom(deriveShuffleSeed(seed, 0x13579BDF))
+        threeCycleHill: createSeededRandom(deriveShuffleSeed(seed, 0x13579BDF)),
+        twoPairHill: createSeededRandom(deriveShuffleSeed(seed, 0x2468ACE0))
     };
 }
 
@@ -88,7 +90,7 @@ function createShuffleRandomStreams(seed) {
 const PREFIX = 'SekigaeKun_v6_'; 
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
-const SHUFFLE_ALGORITHM_VERSION = 'seed-v4-time-priority';
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v5-pair-reorganization';
 const UINT32_MAX = 0xFFFFFFFF;
 /**
  * 最初の探索ラウンドに必ず使う基準試行回数。非ゼロ解では、この後も時間上限まで
@@ -108,6 +110,14 @@ const SEARCH_TIME_LIMIT_MS = 20000;
 const SEARCH_FINISH_MARGIN_MS = 250;
 /** 第2段階: 既存の2席交換を維持しつつ、固定比率で3人循環も試行する。 */
 const THREE_CYCLE_EVERY_NTH_PROPOSAL = 4;
+/**
+ * 2つの完全な机ペアを選び、4人を4席へ総当たりで再配置する頻度。
+ * 1回につき最大23通りを評価するため、通常の2席交換・3人循環の探索量を保てる低頻度にする。
+ */
+const TWO_PAIR_REORGANIZE_EVERY_NTH_PROPOSAL = 64;
+/** 最終微調整では局所最適を取りこぼさないよう、2ペア再配置を少し高頻度で試す。 */
+const HILL_TWO_PAIR_REORGANIZE_EVERY_NTH_PROPOSAL = 24;
+const TWO_PAIR_PRIORITY_SELECTION_CHANCE = 0.75;
 
 /** 座席枠内固定レイアウト（上から順・詰め表示） */
 const SEAT_LAYOUT_FIXED_META = [
@@ -3258,6 +3268,7 @@ function buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineCont
     const annealingContext = {
         random: randomStreams.annealing,
         threeCycleRandom: randomStreams.threeCycleAnnealing,
+        twoPairRandom: randomStreams.twoPairAnnealing,
         safetyContext: timelineContext,
         evaluateAssignment,
         isSwapHardValid: swapValidators.isSwapHardValid,
@@ -3314,6 +3325,100 @@ function createTwoSwapCandidate(assignment, idxA, idxB) {
     candidate[idxB] = temp;
     return candidate;
 }
+
+/** 机として使える完全な2人ペアだけを返す。空席・固定席を含む机は対象外。 */
+function collectMovableCompletePairSeatGroups(assignment) {
+    const pairs = [];
+    for (let leftSeat = 0; leftSeat < TOTAL_SEATS; leftSeat += 2) {
+        const rightSeat = leftSeat + 1;
+        const left = assignment[leftSeat], right = assignment[rightSeat];
+        if (!left || !right || left.hasFixed || right.hasFixed) continue;
+        pairs.push([leftSeat, rightSeat]);
+    }
+    return pairs;
+}
+
+function chooseTwoDistinctItems(items, random) {
+    if (items.length < 2) return null;
+    const firstPos = Math.floor(random() * items.length);
+    let secondPos = Math.floor(random() * (items.length - 1));
+    if (secondPos >= firstPos) secondPos++;
+    return [items[firstPos], items[secondPos]];
+}
+
+function getPairReorganizationPriority(assignment, pairSeats, details) {
+    const byId = details && details.studentPenaltyById ? details.studentPenaltyById : {};
+    return pairSeats.reduce((sum, seatIdx) => sum + (Number(byId[assignment[seatIdx].id]) || 0), 0);
+}
+
+/**
+ * 個人負担の大きい机を優先しつつ、一定割合でランダムな2机も選ぶ。
+ * 常に同じ机だけを選ぶ偏りを避けながら、過去ペア重複などの解消を速める。
+ */
+function chooseTwoPairGroupsForReorganization(assignment, details, random) {
+    const groups = collectMovableCompletePairSeatGroups(assignment);
+    if (groups.length < 2) return null;
+    if (random() >= TWO_PAIR_PRIORITY_SELECTION_CHANCE) return chooseTwoDistinctItems(groups, random);
+
+    const ranked = groups
+        .map(group => ({ group, priority: getPairReorganizationPriority(assignment, group, details) }))
+        .sort((a, b) => b.priority - a.priority);
+    const highestPriority = ranked[0].priority;
+    if (highestPriority <= 0) return chooseTwoDistinctItems(groups, random);
+
+    const focusCount = Math.min(ranked.length, Math.max(2, Math.ceil(ranked.length / 3)));
+    const first = ranked[Math.floor(random() * focusCount)].group;
+    const remaining = ranked.filter(item => item.group !== first);
+    const partnerPool = remaining.slice(0, Math.min(remaining.length, Math.max(1, focusCount)));
+    const second = partnerPool[Math.floor(random() * partnerPool.length)].group;
+    return [first, second];
+}
+
+function sameStudentOrder(left, right) {
+    return left.every((student, idx) => student === right[idx]);
+}
+
+/**
+ * 2机4席へ4人を全配置する。丸ごと交換、相手の組み替え、各机の左右反転をすべて含む。
+ * 現在配置を除く23候補を返す。候補はコピーなので呼び出し側で安全に検証できる。
+ */
+function createTwoPairReorganizationCandidates(assignment, firstPairSeats, secondPairSeats) {
+    const targetSeats = [...firstPairSeats, ...secondPairSeats];
+    const students = targetSeats.map(seatIdx => assignment[seatIdx]);
+    if (students.some(student => !student)) return [];
+    const candidates = [];
+    const build = (prefix, remaining) => {
+        if (remaining.length === 0) {
+            if (sameStudentOrder(prefix, students)) return;
+            const candidate = assignment.slice();
+            targetSeats.forEach((seatIdx, index) => { candidate[seatIdx] = prefix[index]; });
+            candidates.push(candidate);
+            return;
+        }
+        for (let index = 0; index < remaining.length; index++) {
+            const next = remaining[index];
+            build([...prefix, next], [...remaining.slice(0, index), ...remaining.slice(index + 1)]);
+        }
+    };
+    build([], students);
+    return candidates;
+}
+
+function selectBestHardValidCandidate(candidates, isAssignmentHardValid, evaluateAssignment, baselineDetails) {
+    let bestCandidate = null;
+    let bestDetails = null;
+    let hardValidCount = 0;
+    for (const candidate of candidates) {
+        if (!isAssignmentHardValid(candidate)) continue;
+        hardValidCount++;
+        const details = evaluateAssignment(candidate);
+        if (bestDetails === null || compareSoftConstraintEvaluations(details, bestDetails) < 0) {
+            bestCandidate = candidate;
+            bestDetails = details;
+        }
+    }
+    return { candidate: bestCandidate, details: bestDetails || baselineDetails, hardValidCount };
+}
 function weightedSoftScore(depth, base, stepPerDepth) {
     return Math.max(0, base - stepPerDepth * depth);
 }
@@ -3365,6 +3470,25 @@ function compareSoftConstraintEvaluations(left, right) {
     }
 
     return (Number(left.totalScore) || 0) - (Number(right.totalScore) || 0);
+}
+
+/**
+ * 焼きなましで悪化を確率受理する際の距離。
+ * 最終選抜と同じ辞書式順序で、最初に悪化した公平性指標だけを温度に対する差分として使う。
+ */
+function getFairnessAnnealingWorseningMagnitude(candidate, current) {
+    const maxDiff = (Number(candidate.maxIndividualPenalty) || 0) - (Number(current.maxIndividualPenalty) || 0);
+    if (maxDiff !== 0) return Math.abs(maxDiff);
+
+    const candidateVector = getSortedIndividualPenaltyVector(candidate);
+    const currentVector = getSortedIndividualPenaltyVector(current);
+    const vectorLength = Math.max(candidateVector.length, currentVector.length);
+    for (let i = 0; i < vectorLength; i++) {
+        const diff = (candidateVector[i] || 0) - (currentVector[i] || 0);
+        if (diff !== 0) return Math.abs(diff);
+    }
+    const totalDiff = (Number(candidate.totalScore) || 0) - (Number(current.totalScore) || 0);
+    return Math.max(1, Math.abs(totalDiff));
 }
 function formatPenaltyPoints(value) {
     const num = Number(value) || 0;
@@ -3644,7 +3768,7 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
 async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, context) {
     let currentAssign = [...initialAssign];
     const initialDetails = context.evaluateAssignment(currentAssign);
-    let currentScore = initialDetails.totalScore;
+    let currentDetails = initialDetails;
     let bestDetails = initialDetails;
     let finalScore = bestDetails.totalScore;
     let bestAssign = [...currentAssign];
@@ -3652,15 +3776,30 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
 
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0, loopCount = 0;
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
+    let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0, twoPairAcceptedWorse = 0;
 
-    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentScore > 0 && hasSearchTimeRemaining(context.safetyContext); proposalIndex++) {
+    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentDetails.totalScore > 0 && hasSearchTimeRemaining(context.safetyContext); proposalIndex++) {
         if (isShuffleCancelled) return null;
         if (swappableIndicesLocal.length < 2) break;
-        const useThreeCycle = (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
         let candidate;
+        let candidateDetails;
         let isThreeCycle = false;
+        let isTwoPairReorganization = false;
 
-        if (useThreeCycle) {
+        const useTwoPairReorganization = (proposalIndex + 1) % TWO_PAIR_REORGANIZE_EVERY_NTH_PROPOSAL === 0;
+        const useThreeCycle = !useTwoPairReorganization && (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
+        if (useTwoPairReorganization) {
+            const chosenGroups = chooseTwoPairGroupsForReorganization(currentAssign, currentDetails, context.twoPairRandom);
+            if (!chosenGroups) continue;
+            const candidates = createTwoPairReorganizationCandidates(currentAssign, ...chosenGroups);
+            const selected = selectBestHardValidCandidate(candidates, context.isAssignmentHardValid, context.evaluateAssignment, currentDetails);
+            twoPairTrials++;
+            twoPairCandidates += selected.hardValidCount;
+            if (!selected.candidate) continue;
+            candidate = selected.candidate;
+            candidateDetails = selected.details;
+            isTwoPairReorganization = true;
+        } else if (useThreeCycle) {
             const eligibleIndices = collectThreeCycleEligibleIndices(currentAssign);
             const chosenIndices = chooseThreeDistinctIndices(eligibleIndices, context.threeCycleRandom);
             if (!chosenIndices) continue;
@@ -3681,21 +3820,22 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
         }
 
         // 2席交換・3人循環とも、採用前に配置全体の絶対制約と生徒の完全性を検証する。
-        if (!context.isAssignmentHardValid(candidate)) continue;
+        if (!isTwoPairReorganization && !context.isAssignmentHardValid(candidate)) continue;
 
-        const candidateDetails = context.evaluateAssignment(candidate);
-        const newScore = candidateDetails.totalScore;
+        if (!candidateDetails) candidateDetails = context.evaluateAssignment(candidate);
         const elapsedRatio = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
         const t0 = 1800, t1 = 1;
         const temperature = Math.max(t1, t0 * Math.pow(t1 / t0, elapsedRatio));
-        const delta = newScore - currentScore;
-        const acceptWorse = delta > 0 && context.random() < Math.exp(-delta / temperature);
+        const fairnessComparison = compareSoftConstraintEvaluations(candidateDetails, currentDetails);
+        const worseningMagnitude = fairnessComparison > 0 ? getFairnessAnnealingWorseningMagnitude(candidateDetails, currentDetails) : 0;
+        const acceptWorse = fairnessComparison > 0 && context.random() < Math.exp(-worseningMagnitude / temperature);
 
-        if (delta <= 0 || acceptWorse) {
+        if (fairnessComparison <= 0 || acceptWorse) {
             currentAssign = candidate;
-            currentScore = newScore;
-            if (delta > 0) {
-                if (isThreeCycle) threeCycleAcceptedWorse++;
+            currentDetails = candidateDetails;
+            if (fairnessComparison > 0) {
+                if (isTwoPairReorganization) twoPairAcceptedWorse++;
+                else if (isThreeCycle) threeCycleAcceptedWorse++;
                 else acceptedWorse++;
             }
         }
@@ -3705,7 +3845,8 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
             bestDetails = candidateDetails;
             finalScore = bestDetails.totalScore;
             bestAssign = [...candidate];
-            if (isThreeCycle) threeCycleImprovements++;
+            if (isTwoPairReorganization) twoPairImprovements++;
+            else if (isThreeCycle) threeCycleImprovements++;
             else swapImprovements++;
         }
 
@@ -3729,12 +3870,17 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
         acceptedWorse,
         threeCycleTrials,
         threeCycleImprovements,
-        threeCycleAcceptedWorse
+        threeCycleAcceptedWorse,
+        twoPairTrials,
+        twoPairCandidates,
+        twoPairImprovements,
+        twoPairAcceptedWorse
     };
 }
 async function runPhaseBMultiStart(initialSolutions, annealingContext) {
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0;
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
+    let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0, twoPairAcceptedWorse = 0;
     const saResults = [];
     const k = initialSolutions.length;
     for (let i = 0; i < k; i++) {
@@ -3750,21 +3896,40 @@ async function runPhaseBMultiStart(initialSolutions, annealingContext) {
         threeCycleTrials += res.threeCycleTrials;
         threeCycleImprovements += res.threeCycleImprovements;
         threeCycleAcceptedWorse += res.threeCycleAcceptedWorse;
+        twoPairTrials += res.twoPairTrials;
+        twoPairCandidates += res.twoPairCandidates;
+        twoPairImprovements += res.twoPairImprovements;
+        twoPairAcceptedWorse += res.twoPairAcceptedWorse;
     }
-    return { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, k };
+    return { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, twoPairTrials, twoPairCandidates, twoPairImprovements, twoPairAcceptedWorse, k };
 }
-async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random, threeCycleRandom, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
+async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random, threeCycleRandom, twoPairRandom, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
     let finalScore = bestDetails.totalScore;
     const swappableIndices = collectSwappableIndices(bestAssign);
     let hillLoop = 0;
     let swapTrials = 0, swapImprovements = 0, threeCycleTrials = 0, threeCycleImprovements = 0;
+    let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0;
     for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.hillProposals && finalScore > 0 && hasSearchTimeRemaining(safetyContext); proposalIndex++) {
         if (isShuffleCancelled) return null;
         if (swappableIndices.length < 2) break;
-        const useThreeCycle = (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
         let candidate;
+        let candidateDetails;
         let isThreeCycle = false;
-        if (useThreeCycle) {
+        let isTwoPairReorganization = false;
+        const useTwoPairReorganization = (proposalIndex + 1) % HILL_TWO_PAIR_REORGANIZE_EVERY_NTH_PROPOSAL === 0;
+        const useThreeCycle = !useTwoPairReorganization && (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
+        if (useTwoPairReorganization) {
+            const chosenGroups = chooseTwoPairGroupsForReorganization(bestAssign, bestDetails, twoPairRandom);
+            if (!chosenGroups) continue;
+            const candidates = createTwoPairReorganizationCandidates(bestAssign, ...chosenGroups);
+            const selected = selectBestHardValidCandidate(candidates, swapValidators.isAssignmentHardValid, evaluateAssignment, bestDetails);
+            twoPairTrials++;
+            twoPairCandidates += selected.hardValidCount;
+            if (!selected.candidate) continue;
+            candidate = selected.candidate;
+            candidateDetails = selected.details;
+            isTwoPairReorganization = true;
+        } else if (useThreeCycle) {
             const chosenIndices = chooseThreeDistinctIndices(collectThreeCycleEligibleIndices(bestAssign), threeCycleRandom);
             if (!chosenIndices) continue;
             candidate = createThreeCycleCandidate(bestAssign, ...chosenIndices);
@@ -3781,13 +3946,14 @@ async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random
             swapTrials++;
         }
         // ヒルクライムでも候補の採用前に、全絶対制約と重複・漏れを検証する。
-        if (!swapValidators.isAssignmentHardValid(candidate)) continue;
-        const candidateDetails = evaluateAssignment(candidate);
+        if (!isTwoPairReorganization && !swapValidators.isAssignmentHardValid(candidate)) continue;
+        if (!candidateDetails) candidateDetails = evaluateAssignment(candidate);
         if (compareSoftConstraintEvaluations(candidateDetails, bestDetails) < 0) {
             bestAssign = candidate;
             bestDetails = candidateDetails;
             finalScore = bestDetails.totalScore;
-            if (isThreeCycle) threeCycleImprovements++;
+            if (isTwoPairReorganization) twoPairImprovements++;
+            else if (isThreeCycle) threeCycleImprovements++;
             else swapImprovements++;
         }
         hillLoop++;
@@ -3796,7 +3962,7 @@ async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random
             await yieldToBrowser();
         }
     }
-    return { bestAssign, bestDetails, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements };
+    return { bestAssign, bestDetails, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements, twoPairTrials, twoPairCandidates, twoPairImprovements };
 }
 /**
  * 非ゼロ解だけに行う追加の再加熱探索。時間優先のため、同一seedでも端末性能により
@@ -3806,6 +3972,7 @@ async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, annealingCo
     let reheats = 0;
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0;
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
+    let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0, twoPairAcceptedWorse = 0;
     const reheatContext = Object.assign({}, annealingContext, { phaseName: '追加再加熱探索' });
 
     while (bestDetails.totalScore > 0 && hasSearchTimeRemaining(annealingContext.safetyContext)) {
@@ -3818,6 +3985,10 @@ async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, annealingCo
         threeCycleTrials += result.threeCycleTrials;
         threeCycleImprovements += result.threeCycleImprovements;
         threeCycleAcceptedWorse += result.threeCycleAcceptedWorse;
+        twoPairTrials += result.twoPairTrials;
+        twoPairCandidates += result.twoPairCandidates;
+        twoPairImprovements += result.twoPairImprovements;
+        twoPairAcceptedWorse += result.twoPairAcceptedWorse;
         if (compareSoftConstraintEvaluations(result.bestDetails, bestDetails) < 0) {
             bestAssign = result.bestAssign;
             bestDetails = result.bestDetails;
@@ -3836,7 +4007,11 @@ async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, annealingCo
         acceptedWorse,
         threeCycleTrials,
         threeCycleImprovements,
-        threeCycleAcceptedWorse
+        threeCycleAcceptedWorse,
+        twoPairTrials,
+        twoPairCandidates,
+        twoPairImprovements,
+        twoPairAcceptedWorse
     };
 }
 
@@ -4228,6 +4403,7 @@ function showLogModal() {
                 ${log.phaseDTime != null ? `<li>・追加再加熱探索：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（${log.reheatRuns.toLocaleString()} ラウンド）` : '（ペナルティ0のため不要）'}</li>` : ''}
                 <li>・試行スワップ：<b>${(log.swapTrials || 0).toLocaleString()}回</b>（悪化受理 ${(log.acceptedWorse || 0).toLocaleString()}回）</li>
                 ${log.threeCycleTrials != null ? `<li>・3人循環：<b>${log.threeCycleTrials.toLocaleString()}回</b>（SAでの改善 ${(log.threeCycleImprovements || 0).toLocaleString()}回、悪化受理 ${(log.threeCycleAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillThreeCycleTrials || 0).toLocaleString()}回、改善 ${(log.hillThreeCycleImprovements || 0).toLocaleString()}回）</li>` : ''}
+                ${log.twoPairTrials != null ? `<li>・2ペア4人再配置：<b>${log.twoPairTrials.toLocaleString()}回</b>（有効候補 ${(log.twoPairCandidates || 0).toLocaleString()}通り、SAでの改善 ${(log.twoPairImprovements || 0).toLocaleString()}回、悪化受理 ${(log.twoPairAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillTwoPairTrials || 0).toLocaleString()}回、有効候補 ${(log.hillTwoPairCandidates || 0).toLocaleString()}通り、改善 ${(log.hillTwoPairImprovements || 0).toLocaleString()}回）</li>` : ''}
                 <li>・最終評価順序：<b>最大個人負担 → 個人負担の分布 → 合計点</b></li>
                 <li style="padding-left: 15px; font-weight:bold;">最大個人負担：<span style="color:${(d.maxIndividualPenalty || 0) > 0 ? '#e74c3c' : '#27ae60'}">${formatPenaltyPoints(d.maxIndividualPenalty)} 点</span> ／ 不利益を受けた生徒：${d.penalizedStudentCount || 0} 人</li>
                 <li style="padding-left: 15px; font-weight:bold;">最終合計ペナルティ：<span style="color:${log.finalScore > 0 ? '#e74c3c' : '#27ae60'}">${formatPenaltyPoints(log.finalScore)} 点</span></li>
@@ -4373,7 +4549,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         // 3) 焼きなましフェーズ（各初期解を時間スロットで改善）
         const phaseBRun = await runPhaseBMultiStart(initialSolutions, annealingContext);
         if (!phaseBRun) return abortShuffleWithMessage();
-        const { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, k } = phaseBRun;
+        const { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, twoPairTrials, twoPairCandidates, twoPairImprovements, twoPairAcceptedWorse, k } = phaseBRun;
 
         let eliteIdx = 0;
         let bestAssign;
@@ -4395,7 +4571,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         timelineMetrics.phaseBEndActual = performance.now();
 
         // 4) 最終微調整フェーズ（短時間ヒルクライム）
-        const phaseCRun = await runPhaseCHillClimb(bestAssign, bestDetails, timelineContext, randomStreams.hill, randomStreams.threeCycleHill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
+        const phaseCRun = await runPhaseCHillClimb(bestAssign, bestDetails, timelineContext, randomStreams.hill, randomStreams.threeCycleHill, randomStreams.twoPairHill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
         if (!phaseCRun) return abortShuffleWithMessage();
         bestAssign = phaseCRun.bestAssign;
         bestDetails = phaseCRun.bestDetails;
@@ -4433,10 +4609,17 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             threeCycleTrials: threeCycleTrials + phaseDRun.threeCycleTrials,
             threeCycleImprovements: threeCycleImprovements + phaseDRun.threeCycleImprovements,
             threeCycleAcceptedWorse: threeCycleAcceptedWorse + phaseDRun.threeCycleAcceptedWorse,
+            twoPairTrials: twoPairTrials + phaseDRun.twoPairTrials,
+            twoPairCandidates: twoPairCandidates + phaseDRun.twoPairCandidates,
+            twoPairImprovements: twoPairImprovements + phaseDRun.twoPairImprovements,
+            twoPairAcceptedWorse: twoPairAcceptedWorse + phaseDRun.twoPairAcceptedWorse,
             hillSwapTrials: phaseCRun.swapTrials,
             hillSwapImprovements: phaseCRun.swapImprovements,
             hillThreeCycleTrials: phaseCRun.threeCycleTrials,
             hillThreeCycleImprovements: phaseCRun.threeCycleImprovements,
+            hillTwoPairTrials: phaseCRun.twoPairTrials,
+            hillTwoPairCandidates: phaseCRun.twoPairCandidates,
+            hillTwoPairImprovements: phaseCRun.twoPairImprovements,
             finalScore: finalScore,
             details: Object.assign(bestDetails, { individualPenaltyRows: buildIndividualPenaltyRows(bestAssign, bestDetails) }),
             multiStartRuns: k,
