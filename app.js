@@ -78,7 +78,9 @@ function createShuffleRandomStreams(seed) {
     return {
         initial: createSeededRandom(deriveShuffleSeed(seed, 0x1A2B3C4D)),
         annealing: createSeededRandom(deriveShuffleSeed(seed, 0x5E6F7788)),
-        hill: createSeededRandom(deriveShuffleSeed(seed, 0x90ABCDEF))
+        threeCycleAnnealing: createSeededRandom(deriveShuffleSeed(seed, 0x23456789)),
+        hill: createSeededRandom(deriveShuffleSeed(seed, 0x90ABCDEF)),
+        threeCycleHill: createSeededRandom(deriveShuffleSeed(seed, 0x13579BDF))
     };
 }
 
@@ -86,7 +88,7 @@ function createShuffleRandomStreams(seed) {
 const PREFIX = 'SekigaeKun_v6_'; 
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
-const SHUFFLE_ALGORITHM_VERSION = 'seed-v1';
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v2-three-cycle';
 const UINT32_MAX = 0xFFFFFFFF;
 /**
  * seed 指定時の再現性を優先した探索上限。時間ではなく試行回数で停止する。
@@ -101,6 +103,8 @@ const SEEDED_SEARCH_BUDGETS = Object.freeze({
     yieldEveryProposals: 3000,
     safetyCheckInterval: 256
 });
+/** 第2段階: 既存の2席交換を維持しつつ、固定比率で3人循環も試行する。 */
+const THREE_CYCLE_EVERY_NTH_PROPOSAL = 4;
 
 /** 座席枠内固定レイアウト（上から順・詰め表示） */
 const SEAT_LAYOUT_FIXED_META = [
@@ -3114,21 +3118,43 @@ function buildPlacementContext(students, rulesText) {
         adjacentNeighbors: buildAdjacentIncludingDiagonalMap()
     };
 }
-function createSwapValidators(isCheckerboard, canPlaceAt) {
-    const isSwapHardValid = (arr, idx1, idx2, s1, s2) => {
-        if (s2 && !s2.allowedSeats.includes(idx1)) return false;
-        if (s1 && !s1.allowedSeats.includes(idx2)) return false;
-        if (s2 && !canPlaceAt(arr, s2, idx1)) return false;
-        if (s1 && !canPlaceAt(arr, s1, idx2)) return false;
+/**
+ * 探索で候補配置を採用する直前の完全性検証。
+ * allowedSeats は備考・全体ルール・固定席・市松・空席を、canPlaceAt はNG隣接を既に判定する。
+ */
+function createAssignmentHardValidator(students, canPlaceAt) {
+    const expectedById = new Map(students.map(student => [student.id, student]));
+    return assignment => {
+        if (!Array.isArray(assignment) || assignment.length !== TOTAL_SEATS) return false;
+        const foundIds = new Set();
+        for (let seatIdx = 0; seatIdx < TOTAL_SEATS; seatIdx++) {
+            const student = assignment[seatIdx];
+            if (inactiveSeats.has(seatIdx)) {
+                if (student) return false;
+                continue;
+            }
+            if (!student) continue;
+            const preparedStudent = expectedById.get(student.id);
+            if (!preparedStudent || foundIds.has(student.id)) return false;
+            if (!canPlaceAt(assignment, preparedStudent, seatIdx)) return false;
+            foundIds.add(student.id);
+        }
+        if (foundIds.size !== expectedById.size) return false;
+        for (const studentId of expectedById.keys()) if (!foundIds.has(studentId)) return false;
         return true;
     };
+}
+
+function createSwapValidators(isCheckerboard, canPlaceAt, students) {
+    const isAssignmentHardValid = createAssignmentHardValidator(students, canPlaceAt);
+    const isSwapHardValid = (arr, idx1, idx2, s1, s2) => isAssignmentHardValid(arr);
     const canSwapByCheckerboardRule = (s1, s2) => {
         if (!isCheckerboard) return true;
         if (!s1 || !s2) return true;
         if (!s1.gender || !s2.gender) return true;
         return s1.gender === s2.gender;
     };
-    return { isSwapHardValid, canSwapByCheckerboardRule };
+    return { isAssignmentHardValid, isSwapHardValid, canSwapByCheckerboardRule };
 }
 function abortShuffleWithMessage(message = "シャッフルを中止しました。", type = "info") {
     hideProgressModal();
@@ -3214,7 +3240,7 @@ function buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineCont
     const placementGuards = createPlacementGuards(tempStudents, isCheckerboard, bounds, placementContext);
     if (!placementGuards) return null;
     const canPlaceAt = placementGuards.canPlaceAt;
-    const swapValidators = createSwapValidators(isCheckerboard, canPlaceAt);
+    const swapValidators = createSwapValidators(isCheckerboard, canPlaceAt, tempStudents);
     const evaluateAssignment = (assignment) => analyzeSoftConstraintsWithContext(assignment, scoreContext);
     const hasWindowEdge = boardHasWindowEdge();
     const hasCorridorEdge = boardHasCorridorEdge();
@@ -3228,9 +3254,11 @@ function buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineCont
     };
     const annealingContext = {
         random: randomStreams.annealing,
+        threeCycleRandom: randomStreams.threeCycleAnnealing,
         safetyContext: timelineContext,
         evaluateAssignment,
         isSwapHardValid: swapValidators.isSwapHardValid,
+        isAssignmentHardValid: swapValidators.isAssignmentHardValid,
         canSwapByCheckerboardRule: swapValidators.canSwapByCheckerboardRule,
         showProgress: (opts, progress, details) => showProgressModal(opts, progress, details),
         formatProgressDetails: (details) => formatConstraintProgressHtml(details, hasWindowEdge, hasCorridorEdge)
@@ -3243,6 +3271,45 @@ function collectSwappableIndices(assignment) {
         if (!inactiveSeats.has(i) && (!assignment[i] || !assignment[i].hasFixed)) indices.push(i);
     }
     return indices;
+}
+
+/** 3人循環は空席を含めず、可動な生徒がいる3席だけを候補にする。 */
+function collectThreeCycleEligibleIndices(assignment) {
+    return collectSwappableIndices(assignment).filter(idx => Boolean(assignment[idx]));
+}
+
+function chooseThreeDistinctIndices(indices, random) {
+    if (indices.length < 3) return null;
+    const firstPos = Math.floor(random() * indices.length);
+    let secondPos = Math.floor(random() * (indices.length - 1));
+    if (secondPos >= firstPos) secondPos++;
+    const lowPos = Math.min(firstPos, secondPos);
+    const highPos = Math.max(firstPos, secondPos);
+    let thirdPos = Math.floor(random() * (indices.length - 2));
+    if (thirdPos >= lowPos) thirdPos++;
+    if (thirdPos >= highPos) thirdPos++;
+    return [indices[firstPos], indices[secondPos], indices[thirdPos]];
+}
+
+/** A←C, B←A, C←B の向きで3人を循環する。元の配列は変更しない。 */
+function createThreeCycleCandidate(assignment, idxA, idxB, idxC) {
+    const candidate = assignment.slice();
+    const studentA = candidate[idxA];
+    const studentB = candidate[idxB];
+    const studentC = candidate[idxC];
+    if (!studentA || !studentB || !studentC) return null;
+    candidate[idxA] = studentC;
+    candidate[idxB] = studentA;
+    candidate[idxC] = studentB;
+    return candidate;
+}
+
+function createTwoSwapCandidate(assignment, idxA, idxB) {
+    const candidate = assignment.slice();
+    const temp = candidate[idxA];
+    candidate[idxA] = candidate[idxB];
+    candidate[idxB] = temp;
+    return candidate;
 }
 function weightedSoftScore(depth, base, stepPerDepth) {
     return Math.max(0, base - stepPerDepth * depth);
@@ -3513,6 +3580,7 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
     const swappableIndicesLocal = collectSwappableIndices(currentAssign);
 
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0, loopCount = 0;
+    let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
 
     for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentScore > 0; proposalIndex++) {
         if (isShuffleCancelled) return null;
@@ -3520,24 +3588,34 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
             throw new Error('SEED_SEARCH_TIMEOUT');
         }
         if (swappableIndicesLocal.length < 2) break;
+        const useThreeCycle = (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
+        let candidate;
+        let isThreeCycle = false;
 
-        let r1 = Math.floor(context.random() * swappableIndicesLocal.length);
-        let r2 = Math.floor(context.random() * swappableIndicesLocal.length);
-        if (r1 === r2) continue;
-        const idx1 = swappableIndicesLocal[r1], idx2 = swappableIndicesLocal[r2];
-        const s1 = currentAssign[idx1], s2 = currentAssign[idx2];
-        if (!context.canSwapByCheckerboardRule(s1, s2)) continue;
-
-        swapTrials++;
-        currentAssign[idx1] = s2;
-        currentAssign[idx2] = s1;
-        if (!context.isSwapHardValid(currentAssign, idx1, idx2, s1, s2)) {
-            currentAssign[idx1] = s1;
-            currentAssign[idx2] = s2;
-            continue;
+        if (useThreeCycle) {
+            const eligibleIndices = collectThreeCycleEligibleIndices(currentAssign);
+            const chosenIndices = chooseThreeDistinctIndices(eligibleIndices, context.threeCycleRandom);
+            if (!chosenIndices) continue;
+            const [idxA, idxB, idxC] = chosenIndices;
+            candidate = createThreeCycleCandidate(currentAssign, idxA, idxB, idxC);
+            if (!candidate) continue;
+            threeCycleTrials++;
+            isThreeCycle = true;
+        } else {
+            let r1 = Math.floor(context.random() * swappableIndicesLocal.length);
+            let r2 = Math.floor(context.random() * swappableIndicesLocal.length);
+            if (r1 === r2) continue;
+            const idx1 = swappableIndicesLocal[r1], idx2 = swappableIndicesLocal[r2];
+            const s1 = currentAssign[idx1], s2 = currentAssign[idx2];
+            if (!context.canSwapByCheckerboardRule(s1, s2)) continue;
+            candidate = createTwoSwapCandidate(currentAssign, idx1, idx2);
+            swapTrials++;
         }
 
-        const newScore = context.evaluateAssignment(currentAssign).totalScore;
+        // 2席交換・3人循環とも、採用前に配置全体の絶対制約と生徒の完全性を検証する。
+        if (!context.isAssignmentHardValid(candidate)) continue;
+
+        const newScore = context.evaluateAssignment(candidate).totalScore;
         const elapsedRatio = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
         const t0 = 1800, t1 = 1;
         const temperature = Math.max(t1, t0 * Math.pow(t1 / t0, elapsedRatio));
@@ -3545,16 +3623,18 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
         const acceptWorse = delta > 0 && context.random() < Math.exp(-delta / temperature);
 
         if (delta <= 0 || acceptWorse) {
+            currentAssign = candidate;
             currentScore = newScore;
-            if (delta > 0) acceptedWorse++;
+            if (delta > 0) {
+                if (isThreeCycle) threeCycleAcceptedWorse++;
+                else acceptedWorse++;
+            }
             if (newScore < finalScore) {
                 finalScore = newScore;
                 bestAssign = [...currentAssign];
-                swapImprovements++;
+                if (isThreeCycle) threeCycleImprovements++;
+                else swapImprovements++;
             }
-        } else {
-            currentAssign[idx1] = s1;
-            currentAssign[idx2] = s2;
         }
 
         loopCount++;
@@ -3576,11 +3656,15 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
         finalScore,
         swapTrials,
         swapImprovements,
-        acceptedWorse
+        acceptedWorse,
+        threeCycleTrials,
+        threeCycleImprovements,
+        threeCycleAcceptedWorse
     };
 }
 async function runPhaseBMultiStart(initialSolutions, annealingContext) {
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0;
+    let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
     const saResults = [];
     const k = initialSolutions.length;
     for (let i = 0; i < k; i++) {
@@ -3593,33 +3677,49 @@ async function runPhaseBMultiStart(initialSolutions, annealingContext) {
         swapTrials += res.swapTrials;
         swapImprovements += res.swapImprovements;
         acceptedWorse += res.acceptedWorse;
+        threeCycleTrials += res.threeCycleTrials;
+        threeCycleImprovements += res.threeCycleImprovements;
+        threeCycleAcceptedWorse += res.threeCycleAcceptedWorse;
     }
-    return { saResults, swapTrials, swapImprovements, acceptedWorse, k };
+    return { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, k };
 }
-async function runPhaseCHillClimb(bestAssign, finalScore, safetyContext, random, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
+async function runPhaseCHillClimb(bestAssign, finalScore, safetyContext, random, threeCycleRandom, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
     const swappableIndices = collectSwappableIndices(bestAssign);
     let hillLoop = 0;
+    let swapTrials = 0, swapImprovements = 0, threeCycleTrials = 0, threeCycleImprovements = 0;
     for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.hillProposals && finalScore > 0; proposalIndex++) {
         if (isShuffleCancelled) return null;
         if (proposalIndex % SEEDED_SEARCH_BUDGETS.safetyCheckInterval === 0 && performance.now() > safetyContext.totalEndDeadline) {
             throw new Error('SEED_SEARCH_TIMEOUT');
         }
         if (swappableIndices.length < 2) break;
-        let r1 = Math.floor(random() * swappableIndices.length), r2 = Math.floor(random() * swappableIndices.length);
-        if (r1 === r2) continue;
-        const idx1 = swappableIndices[r1], idx2 = swappableIndices[r2];
-        const s1 = bestAssign[idx1], s2 = bestAssign[idx2];
-        if (!swapValidators.canSwapByCheckerboardRule(s1, s2)) continue;
-        bestAssign[idx1] = s2; bestAssign[idx2] = s1;
-        if (!swapValidators.isSwapHardValid(bestAssign, idx1, idx2, s1, s2)) {
-            bestAssign[idx1] = s1; bestAssign[idx2] = s2;
-            continue;
-        }
-        const newScore = evaluateAssignment(bestAssign).totalScore;
-        if (newScore < finalScore) {
-            finalScore = newScore;
+        const useThreeCycle = (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
+        let candidate;
+        let isThreeCycle = false;
+        if (useThreeCycle) {
+            const chosenIndices = chooseThreeDistinctIndices(collectThreeCycleEligibleIndices(bestAssign), threeCycleRandom);
+            if (!chosenIndices) continue;
+            candidate = createThreeCycleCandidate(bestAssign, ...chosenIndices);
+            if (!candidate) continue;
+            threeCycleTrials++;
+            isThreeCycle = true;
         } else {
-            bestAssign[idx1] = s1; bestAssign[idx2] = s2;
+            let r1 = Math.floor(random() * swappableIndices.length), r2 = Math.floor(random() * swappableIndices.length);
+            if (r1 === r2) continue;
+            const idx1 = swappableIndices[r1], idx2 = swappableIndices[r2];
+            const s1 = bestAssign[idx1], s2 = bestAssign[idx2];
+            if (!swapValidators.canSwapByCheckerboardRule(s1, s2)) continue;
+            candidate = createTwoSwapCandidate(bestAssign, idx1, idx2);
+            swapTrials++;
+        }
+        // ヒルクライムでも候補の採用前に、全絶対制約と重複・漏れを検証する。
+        if (!swapValidators.isAssignmentHardValid(candidate)) continue;
+        const newScore = evaluateAssignment(candidate).totalScore;
+        if (newScore < finalScore) {
+            bestAssign = candidate;
+            finalScore = newScore;
+            if (isThreeCycle) threeCycleImprovements++;
+            else swapImprovements++;
         }
         hillLoop++;
         if (hillLoop % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
@@ -3628,7 +3728,7 @@ async function runPhaseCHillClimb(bestAssign, finalScore, safetyContext, random,
             await yieldToBrowser();
         }
     }
-    return { bestAssign, finalScore };
+    return { bestAssign, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements };
 }
 
 function escapeHtml(str) {
@@ -4005,6 +4105,7 @@ function showLogModal() {
                 <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : ''}</li>
                 <li>・最終微調整（山登り）：<b>${(log.phaseCTime || 0).toFixed(2)} 秒</b></li>
                 <li>・試行スワップ：<b>${(log.swapTrials || 0).toLocaleString()}回</b>（悪化受理 ${(log.acceptedWorse || 0).toLocaleString()}回）</li>
+                ${log.threeCycleTrials != null ? `<li>・3人循環：<b>${log.threeCycleTrials.toLocaleString()}回</b>（SAでの改善 ${(log.threeCycleImprovements || 0).toLocaleString()}回、悪化受理 ${(log.threeCycleAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillThreeCycleTrials || 0).toLocaleString()}回、改善 ${(log.hillThreeCycleImprovements || 0).toLocaleString()}回）</li>` : ''}
                 <li style="padding-left: 15px; font-weight:bold;">最終スコア：<span style="color:${log.finalScore > 0 ? '#e74c3c' : '#27ae60'}">${log.finalScore} 点</span></li>
             </ul>
         </div>
@@ -4146,7 +4247,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         // 3) 焼きなましフェーズ（各初期解を時間スロットで改善）
         const phaseBRun = await runPhaseBMultiStart(initialSolutions, annealingContext);
         if (!phaseBRun) return abortShuffleWithMessage();
-        const { saResults, swapTrials, swapImprovements, acceptedWorse, k } = phaseBRun;
+        const { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, k } = phaseBRun;
 
         let eliteIdx = 0;
         let bestAssign;
@@ -4165,7 +4266,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         timelineMetrics.phaseBEndActual = performance.now();
 
         // 4) 最終微調整フェーズ（短時間ヒルクライム）
-        const phaseCRun = await runPhaseCHillClimb(bestAssign, finalScore, timelineContext, randomStreams.hill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
+        const phaseCRun = await runPhaseCHillClimb(bestAssign, finalScore, timelineContext, randomStreams.hill, randomStreams.threeCycleHill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
         if (!phaseCRun) return abortShuffleWithMessage();
         bestAssign = phaseCRun.bestAssign;
         finalScore = phaseCRun.finalScore;
@@ -4181,6 +4282,13 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             swapTrials: swapTrials,
             swapImprovements: swapImprovements,
             acceptedWorse: acceptedWorse,
+            threeCycleTrials: threeCycleTrials,
+            threeCycleImprovements: threeCycleImprovements,
+            threeCycleAcceptedWorse: threeCycleAcceptedWorse,
+            hillSwapTrials: phaseCRun.swapTrials,
+            hillSwapImprovements: phaseCRun.swapImprovements,
+            hillThreeCycleTrials: phaseCRun.threeCycleTrials,
+            hillThreeCycleImprovements: phaseCRun.threeCycleImprovements,
             finalScore: finalScore,
             details: evaluateAssignment(bestAssign),
             multiStartRuns: k,
@@ -4811,7 +4919,7 @@ function buildManualSwapEvalContext() {
         }
         return true;
     };
-    const swapValidators = createSwapValidators(isCheckerboard, canPlaceAt);
+    const swapValidators = createSwapValidators(isCheckerboard, canPlaceAt, students);
     const pastMaps = buildPastConstraintMaps(students, histories);
     const scoreContext = buildScoreContext(bounds, pastMaps);
     const evaluateAssignment = (a) => analyzeSoftConstraintsWithContext(a, scoreContext);
