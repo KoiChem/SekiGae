@@ -3263,7 +3263,7 @@ function buildShuffleExecutionContext(tempStudents, isCheckerboard, timelineCont
         isSwapHardValid: swapValidators.isSwapHardValid,
         isAssignmentHardValid: swapValidators.isAssignmentHardValid,
         canSwapByCheckerboardRule: swapValidators.canSwapByCheckerboardRule,
-        showProgress: (opts, progress, details) => showProgressModal(opts, progress, details),
+        showProgress: (opts, timelineContext, details) => showProgressModal(opts, timelineContext, details),
         formatProgressDetails: (details) => formatConstraintProgressHtml(details, hasWindowEdge, hasCorridorEdge)
     };
     return { evaluateAssignment, swapValidators, backtrackingContext, annealingContext, hasWindowEdge, hasCorridorEdge };
@@ -3616,8 +3616,7 @@ async function buildInitialByBacktracking(attemptIndex, context) {
 
         unassigned.splice(bestIdx, 0, selected);
         if (nodeCount % SEEDED_SEARCH_BUDGETS.yieldEveryInitialNodes === 0) {
-            const progress = Math.min(25, ((attemptIndex + Math.min(1, nodeCount / SEEDED_SEARCH_BUDGETS.initialNodesPerStart)) / SEEDED_SEARCH_BUDGETS.initialStarts) * 25);
-            showProgressModal("初期解を構築中...", progress);
+            showProgressModal("初期解を構築中...", context.safetyContext);
             await yieldToBrowser();
         }
         return false;
@@ -3631,8 +3630,7 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
     for (let attempt = 0; attempt < maxStarts; attempt++) {
         if (isShuffleCancelled) return null;
         if (!hasSearchTimeRemaining(timelineContext)) break;
-        const progressA = Math.min(25, (attempt / maxStarts) * 25);
-        showProgressModal(`初期解を構築中 (${attempt + 1}/${maxStarts})...`, progressA);
+        showProgressModal(`初期解を構築中 (${attempt + 1}/${maxStarts})...`, timelineContext);
         await yieldToBrowser();
         const sol = await buildInitialByBacktracking(attempt, backtrackingContext);
         if (sol) initialSolutions.push([...sol]);
@@ -3713,13 +3711,11 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
 
         loopCount++;
         if (loopCount % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
-            const withinSlot = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
-            const progress = 25 + Math.min(65, ((runIdx + withinSlot) / runTotal) * 65);
             context.showProgress({
                 phase: `${context.phaseName || '焼きなまし'} ${runIdx + 1}/${runTotal}`,
                 trials: swapTrials,
                 score: finalScore
-            }, progress, context.formatProgressDetails(bestDetails));
+            }, context.safetyContext, context.formatProgressDetails(bestDetails));
             await yieldToBrowser();
         }
     }
@@ -3796,7 +3792,7 @@ async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random
         }
         hillLoop++;
         if (hillLoop % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
-            showProgressModal({ phase: '最終微調整中', score: finalScore }, 95, formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge));
+            showProgressModal({ phase: '最終微調整中', score: finalScore }, safetyContext, formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge));
             await yieldToBrowser();
         }
     }
@@ -3869,9 +3865,20 @@ function buildProgressMainInner(textOrOpts) {
     return `<div class="progress-main progress-main-structured"><div class="progress-phase-title">${phase}</div>${stats}</div>`;
 }
 
-function showProgressModal(textOrOpts, percent, detailHtml = null) {
+function showProgressModal(textOrOpts, timelineContext, detailHtml = null, isComplete = false) {
+    const elapsedMs = timelineContext && Number.isFinite(timelineContext.totalStartTime)
+        ? Math.max(0, performance.now() - timelineContext.totalStartTime)
+        : 0;
+    const percent = isComplete ? 100 : Math.min(99, (elapsedMs / SEARCH_TIME_LIMIT_MS) * 100);
+    const elapsedSeconds = elapsedMs / 1000;
+    const timeLabel = isComplete
+        ? `探索完了（${elapsedSeconds.toFixed(2)} 秒）`
+        : `${elapsedSeconds.toFixed(1)} / ${(SEARCH_TIME_LIMIT_MS / 1000).toFixed(1)} 秒（上限）`;
     document.getElementById('progress-modal').style.display = 'flex';
-    document.getElementById('progress-bar').style.width = percent + '%';
+    const progressBar = document.getElementById('progress-bar');
+    progressBar.style.width = percent + '%';
+    progressBar.setAttribute('aria-valuenow', String(Math.round(percent)));
+    document.getElementById('progress-time-label').textContent = timeLabel;
     const el = document.getElementById('progress-text');
     el.classList.add('progress-text-block');
     const mainInner = buildProgressMainInner(textOrOpts);
@@ -4338,7 +4345,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             totalEndDeadline: totalStartTime + SEARCH_TIME_LIMIT_MS
         };
         const randomStreams = createShuffleRandomStreams(shuffleRun.seed);
-        showProgressModal("準備中...", 0);
+        showProgressModal("準備中...", timelineContext);
         await yieldToBrowser();
         if (isShuffleCancelled) {
             return abortShuffleWithMessage();
@@ -4402,6 +4409,13 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         bestDetails = phaseDRun.bestDetails;
         finalScore = phaseDRun.finalScore;
         timelineMetrics.phaseDEndActual = performance.now();
+        showProgressModal(
+            { phase: finalScore === 0 ? 'ペナルティ0を達成しました' : '探索時間の上限に到達しました', score: finalScore },
+            timelineContext,
+            formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge),
+            true
+        );
+        await yieldToBrowser();
         const totalEndTime = performance.now();
         hideProgressModal();
 

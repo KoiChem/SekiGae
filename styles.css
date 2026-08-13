@@ -348,7 +348,9 @@ input, select, textarea { padding: 6px; border: 1px solid #ccc; border-radius: 4
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
-.progress-bar-container { width: 100%; height: 20px; background: #eee; border-radius: 10px; overflow: hidden; margin-top: 15px; }
+.progress-time-row { display: flex; justify-content: space-between; gap: 12px; margin-top: 15px; color: #64748b; font-size: 0.78em; font-weight: 600; }
+.progress-time-row #progress-time-label { font-variant-numeric: tabular-nums; }
+.progress-bar-container { width: 100%; height: 20px; background: #eee; border-radius: 10px; overflow: hidden; margin-top: 5px; }
 .progress-bar-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s linear; }
 
 #log-modal .modal-content { max-width: 700px; text-align: left; }

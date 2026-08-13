@@ -67,8 +67,12 @@
     <div class="modal-content">
         <h2 style="border:none; font-size:1.4em; color: #3498db; margin-bottom: 5px;">AI最適化中...</h2>
         <p id="progress-text" class="progress-text-block">準備中...</p>
+        <div class="progress-time-row" aria-live="polite">
+            <span>探索時間</span>
+            <span id="progress-time-label">0.0 / 20.0 秒（上限）</span>
+        </div>
         <div class="progress-bar-container">
-            <div id="progress-bar" class="progress-bar-fill"></div>
+            <div id="progress-bar" class="progress-bar-fill" role="progressbar" aria-label="探索時間の経過" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
         </div>
         <div style="margin-top: 12px;">
             <button class="btn btn-outline" style="padding: 8px 20px;" onclick="cancelShuffleCalculation()">キャンセル</button>
