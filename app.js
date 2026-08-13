@@ -88,7 +88,7 @@ function createShuffleRandomStreams(seed) {
 const PREFIX = 'SekigaeKun_v6_'; 
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
-const SHUFFLE_ALGORITHM_VERSION = 'seed-v2-three-cycle';
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v3-individual-fairness';
 const UINT32_MAX = 0xFFFFFFFF;
 /**
  * seed 指定時の再現性を優先した探索上限。時間ではなく試行回数で停止する。
@@ -3189,9 +3189,9 @@ function finalizeShuffleSuccess(bestAssign, finalScore) {
     activeShuffleRun = null;
     setActionButtons(true, true);
     if (finalScore > 0) {
-        showAlert(`シャッフル完了。\n絶対制約を守ったうえで、優先ルール違反を最小化しました。詳細は「詳細ログ」を確認してください。`, "warning");
+        showAlert(`シャッフル完了。\n絶対制約を守ったうえで、個人への不利益集中を優先して抑えました。詳細は「詳細ログ」を確認してください。`, "warning");
     } else {
-        showAlert(`完璧な配置が完了しました。（絶対制約順守 + スコア0）`, "success");
+        showAlert(`完璧な配置が完了しました。（絶対制約順守 + ペナルティ0）`, "success");
     }
     isCalculating = false;
     isShuffleCancelled = false;
@@ -3317,11 +3317,71 @@ function weightedSoftScore(depth, base, stepPerDepth) {
 function createSoftConstraintDetails() {
     return {
         frontDupRows: [], backDupRows: [], windowDupRows: [], corridorDupRows: [], pastPairStrs: [], pastSeatStrs: [],
-        scoreFront: 0, scorePair: 0, scoreBack: 0, scoreWindow: 0, scoreCorridor: 0, scoreSeat: 0
+        scoreFront: 0, scorePair: 0, scoreBack: 0, scoreWindow: 0, scoreCorridor: 0, scoreSeat: 0,
+        studentPenaltyById: Object.create(null), maxIndividualPenalty: 0, penalizedStudentCount: 0
     };
 }
 function addDupRow(details, key, studentId, pts, scored, displayText) {
     details[key].push({ studentId: studentId, sortScore: pts, scored: scored, displayText: displayText });
+}
+/** 個人に帰属する不利益。机ペアのような共有違反は呼び出し側で分配する。 */
+function addStudentPenalty(details, studentId, pts) {
+    if (!studentId || !Number.isFinite(pts) || pts <= 0) return;
+    const previous = details.studentPenaltyById[studentId] || 0;
+    const next = previous + pts;
+    details.studentPenaltyById[studentId] = next;
+    if (previous === 0) details.penalizedStudentCount++;
+    if (next > details.maxIndividualPenalty) details.maxIndividualPenalty = next;
+}
+function getSortedIndividualPenaltyVector(details) {
+    if (details._individualPenaltyVector) return details._individualPenaltyVector;
+    const vector = Object.values(details.studentPenaltyById || {})
+        .filter(pts => pts > 0)
+        .sort((a, b) => b - a);
+    // 評価中の一時キャッシュ。ログや保存データには含めない。
+    Object.defineProperty(details, '_individualPenaltyVector', { value: vector, enumerable: false });
+    return vector;
+}
+/**
+ * ソフト制約の公平性比較。負の値なら left の方が良い。
+ * 1) 最大個人負担 2) 個人負担の降順分布 3) 全体合計 の辞書式順で比較する。
+ */
+function compareSoftConstraintEvaluations(left, right) {
+    const leftMax = Number(left.maxIndividualPenalty) || 0;
+    const rightMax = Number(right.maxIndividualPenalty) || 0;
+    if (leftMax !== rightMax) return leftMax - rightMax;
+    if (leftMax === 0) return 0;
+
+    const leftVector = getSortedIndividualPenaltyVector(left);
+    const rightVector = getSortedIndividualPenaltyVector(right);
+    const vectorLength = Math.max(leftVector.length, rightVector.length);
+    for (let i = 0; i < vectorLength; i++) {
+        const leftValue = leftVector[i] || 0;
+        const rightValue = rightVector[i] || 0;
+        if (leftValue !== rightValue) return leftValue - rightValue;
+    }
+
+    return (Number(left.totalScore) || 0) - (Number(right.totalScore) || 0);
+}
+function formatPenaltyPoints(value) {
+    const num = Number(value) || 0;
+    return Number.isInteger(num) ? String(num) : String(Math.round(num * 10) / 10);
+}
+function describeFairnessEvaluation(details) {
+    return `最大個人負担 ${formatPenaltyPoints(details.maxIndividualPenalty)}点 ／ 不利益を受けた生徒 ${Number(details.penalizedStudentCount) || 0}人 ／ 合計 ${formatPenaltyPoints(details.totalScore)}点`;
+}
+function buildIndividualPenaltyRows(assignment, details) {
+    const byId = details.studentPenaltyById || {};
+    return assignment
+        .filter(Boolean)
+        .map(student => ({
+            studentId: student.id,
+            sortScore: byId[student.id] || 0,
+            scored: (byId[student.id] || 0) > 0,
+            displayText: `[${student.id} ${student.name}] 合計 +${formatPenaltyPoints(byId[student.id] || 0)}点`
+        }))
+        .filter(row => row.scored)
+        .sort((a, b) => b.sortScore - a.sortScore || String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true }));
 }
 function buildSoftRuleHints(context) {
     return {
@@ -3348,6 +3408,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (scored) {
                 totalScoreRef.value += pts;
                 details[scoreKey] += pts;
+                addStudentPenalty(details, stu.id, pts);
             }
             const dl = depthLabel(d);
             const displayText = scored
@@ -3365,6 +3426,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (scored) {
                 totalScoreRef.value += pts;
                 details.scoreFront += pts;
+                addStudentPenalty(details, student.id, pts);
             }
             const dl = depthLabel(d);
             const displayText = scored
@@ -3382,6 +3444,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (scored) {
                 totalScoreRef.value += pts;
                 details.scoreBack += pts;
+                addStudentPenalty(details, student.id, pts);
             }
             const dl = depthLabel(d);
             const displayText = scored
@@ -3398,6 +3461,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (h.seatIdx === seatIndex) {
                 totalScoreRef.value += basePts;
                 details.scoreSeat += basePts;
+                addStudentPenalty(details, student.id, basePts);
                 details.pastSeatStrs.push(`[${student.id} ${student.name}] 同じ座席（${depthLabel(h.depth)} +${basePts}点）`);
                 return;
             }
@@ -3407,6 +3471,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (nearPts <= 0) return;
             totalScoreRef.value += nearPts;
             details.scoreSeat += nearPts;
+            addStudentPenalty(details, student.id, nearPts);
             details.pastSeatStrs.push(`[${student.id} ${student.name}] 過去座席の近傍8マス（${depthLabel(h.depth)} +${nearPts}点）`);
         });
     };
@@ -3418,6 +3483,9 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (pts <= 0) return;
             totalScoreRef.value += pts;
             details.scorePair += pts;
+            // 机ペア重複は二人に等しく帰属させ、個人負担の合計は従来の全体スコアと一致させる。
+            addStudentPenalty(details, student.id, pts / 2);
+            addStudentPenalty(details, partner.id, pts / 2);
             details.pastPairStrs.push(`該当ペア：[${student.id} ${student.name}] ＆ [${partner.id} ${partner.name}]（${depthLabel(h.depth)} +${pts}点）`);
         });
     };
@@ -3465,6 +3533,8 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
 }
 function formatConstraintProgressHtml(details, hasWindowEdge, hasCorridorEdge) {
     const rows = [
+        ['最大個人負担', formatPenaltyPoints(details.maxIndividualPenalty)],
+        ['不利益を受けた生徒', details.penalizedStudentCount || 0],
         ['前列', details.scoreFront],
         ['後列', details.scoreBack],
         ['過去ペア', details.scorePair]
@@ -3479,7 +3549,7 @@ function formatConstraintProgressHtml(details, hasWindowEdge, hasCorridorEdge) {
         html += `<div class="progress-constraint-row${resolved ? ' resolved' : ''}">`;
         html += `<span class="progress-con-mark">${resolved ? '✓' : ''}</span>`;
         html += `<span class="progress-con-label">${label}</span>`;
-        html += `<span class="progress-con-num">${num}</span>`;
+        html += `<span class="progress-con-num">${escapeHtml(String(n))}</span>`;
         html += '</div>';
     }
     html += '</div>';
@@ -3574,8 +3644,10 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
  */
 async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, context) {
     let currentAssign = [...initialAssign];
-    let currentScore = context.evaluateAssignment(currentAssign).totalScore;
-    let finalScore = currentScore;
+    const initialDetails = context.evaluateAssignment(currentAssign);
+    let currentScore = initialDetails.totalScore;
+    let bestDetails = initialDetails;
+    let finalScore = bestDetails.totalScore;
     let bestAssign = [...currentAssign];
     const swappableIndicesLocal = collectSwappableIndices(currentAssign);
 
@@ -3615,7 +3687,8 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
         // 2席交換・3人循環とも、採用前に配置全体の絶対制約と生徒の完全性を検証する。
         if (!context.isAssignmentHardValid(candidate)) continue;
 
-        const newScore = context.evaluateAssignment(candidate).totalScore;
+        const candidateDetails = context.evaluateAssignment(candidate);
+        const newScore = candidateDetails.totalScore;
         const elapsedRatio = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
         const t0 = 1800, t1 = 1;
         const temperature = Math.max(t1, t0 * Math.pow(t1 / t0, elapsedRatio));
@@ -3629,30 +3702,33 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
                 if (isThreeCycle) threeCycleAcceptedWorse++;
                 else acceptedWorse++;
             }
-            if (newScore < finalScore) {
-                finalScore = newScore;
-                bestAssign = [...currentAssign];
-                if (isThreeCycle) threeCycleImprovements++;
-                else swapImprovements++;
-            }
+        }
+
+        // 焼きなましの移動判定は連続した合計点を維持する一方、最良解は個人負担の公平性で選ぶ。
+        if (compareSoftConstraintEvaluations(candidateDetails, bestDetails) < 0) {
+            bestDetails = candidateDetails;
+            finalScore = bestDetails.totalScore;
+            bestAssign = [...candidate];
+            if (isThreeCycle) threeCycleImprovements++;
+            else swapImprovements++;
         }
 
         loopCount++;
         if (loopCount % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
             const withinSlot = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
             const progress = 25 + Math.min(65, ((runIdx + withinSlot) / runTotal) * 65);
-            const detailsNow = context.evaluateAssignment(bestAssign);
             context.showProgress({
                 phase: `焼きなまし ${runIdx + 1}/${runTotal}`,
                 trials: swapTrials,
                 score: finalScore
-            }, progress, context.formatProgressDetails(detailsNow));
+            }, progress, context.formatProgressDetails(bestDetails));
             await yieldToBrowser();
         }
     }
 
     return {
         bestAssign,
+        bestDetails,
         finalScore,
         swapTrials,
         swapImprovements,
@@ -3683,7 +3759,8 @@ async function runPhaseBMultiStart(initialSolutions, annealingContext) {
     }
     return { saResults, swapTrials, swapImprovements, acceptedWorse, threeCycleTrials, threeCycleImprovements, threeCycleAcceptedWorse, k };
 }
-async function runPhaseCHillClimb(bestAssign, finalScore, safetyContext, random, threeCycleRandom, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
+async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random, threeCycleRandom, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
+    let finalScore = bestDetails.totalScore;
     const swappableIndices = collectSwappableIndices(bestAssign);
     let hillLoop = 0;
     let swapTrials = 0, swapImprovements = 0, threeCycleTrials = 0, threeCycleImprovements = 0;
@@ -3714,21 +3791,21 @@ async function runPhaseCHillClimb(bestAssign, finalScore, safetyContext, random,
         }
         // ヒルクライムでも候補の採用前に、全絶対制約と重複・漏れを検証する。
         if (!swapValidators.isAssignmentHardValid(candidate)) continue;
-        const newScore = evaluateAssignment(candidate).totalScore;
-        if (newScore < finalScore) {
+        const candidateDetails = evaluateAssignment(candidate);
+        if (compareSoftConstraintEvaluations(candidateDetails, bestDetails) < 0) {
             bestAssign = candidate;
-            finalScore = newScore;
+            bestDetails = candidateDetails;
+            finalScore = bestDetails.totalScore;
             if (isThreeCycle) threeCycleImprovements++;
             else swapImprovements++;
         }
         hillLoop++;
         if (hillLoop % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
-            const detailsNow = evaluateAssignment(bestAssign);
-            showProgressModal({ phase: '最終微調整中', score: finalScore }, 95, formatConstraintProgressHtml(detailsNow, hasWindowEdge, hasCorridorEdge));
+            showProgressModal({ phase: '最終微調整中', score: finalScore }, 95, formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge));
             await yieldToBrowser();
         }
     }
-    return { bestAssign, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements };
+    return { bestAssign, bestDetails, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements };
 }
 
 function escapeHtml(str) {
@@ -3749,7 +3826,7 @@ function buildProgressMainInner(textOrOpts) {
             stats += `<div class="progress-stat"><span class="progress-stat-label">試行スワップ</span><div class="progress-stat-value-line"><span class="progress-stat-value">${escapeHtml(trialsStr)}</span><span class="progress-stat-unit">回</span></div></div>`;
         }
         if (textOrOpts.score != null) {
-            stats += `<div class="progress-stat"><span class="progress-stat-label">スコア</span><div class="progress-stat-value-line"><span class="progress-stat-value">${escapeHtml(String(textOrOpts.score))}</span><span class="progress-stat-unit">点</span></div></div>`;
+            stats += `<div class="progress-stat"><span class="progress-stat-label">合計ペナルティ</span><div class="progress-stat-value-line"><span class="progress-stat-value">${escapeHtml(String(textOrOpts.score))}</span><span class="progress-stat-unit">点</span></div></div>`;
         }
         stats += '</div>';
     }
@@ -4095,6 +4172,7 @@ function updateExceptionMessage() {
 function showLogModal() {
     if(!lastShuffleLog) return;
     const log = lastShuffleLog;
+    const d = log.details || {};
     let html = `
         <div class="log-section">
             <h3>AI最適化プロセス</h3>
@@ -4106,11 +4184,13 @@ function showLogModal() {
                 <li>・最終微調整（山登り）：<b>${(log.phaseCTime || 0).toFixed(2)} 秒</b></li>
                 <li>・試行スワップ：<b>${(log.swapTrials || 0).toLocaleString()}回</b>（悪化受理 ${(log.acceptedWorse || 0).toLocaleString()}回）</li>
                 ${log.threeCycleTrials != null ? `<li>・3人循環：<b>${log.threeCycleTrials.toLocaleString()}回</b>（SAでの改善 ${(log.threeCycleImprovements || 0).toLocaleString()}回、悪化受理 ${(log.threeCycleAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillThreeCycleTrials || 0).toLocaleString()}回、改善 ${(log.hillThreeCycleImprovements || 0).toLocaleString()}回）</li>` : ''}
-                <li style="padding-left: 15px; font-weight:bold;">最終スコア：<span style="color:${log.finalScore > 0 ? '#e74c3c' : '#27ae60'}">${log.finalScore} 点</span></li>
+                <li>・最終評価順序：<b>最大個人負担 → 個人負担の分布 → 合計点</b></li>
+                <li style="padding-left: 15px; font-weight:bold;">最大個人負担：<span style="color:${(d.maxIndividualPenalty || 0) > 0 ? '#e74c3c' : '#27ae60'}">${formatPenaltyPoints(d.maxIndividualPenalty)} 点</span> ／ 不利益を受けた生徒：${d.penalizedStudentCount || 0} 人</li>
+                <li style="padding-left: 15px; font-weight:bold;">最終合計ペナルティ：<span style="color:${log.finalScore > 0 ? '#e74c3c' : '#27ae60'}">${formatPenaltyPoints(log.finalScore)} 点</span></li>
             </ul>
         </div>
         <div class="log-section">
-            <h3>最終スコア内訳（合計：${log.finalScore} 点）</h3>
+            <h3>最終合計ペナルティ内訳（合計：${formatPenaltyPoints(log.finalScore)} 点）</h3>
     `;
     const parsePenaltyPoint = txt => {
         const m = String(txt).match(/\+(\d+)点/);
@@ -4178,7 +4258,6 @@ function showLogModal() {
         return res;
     };
     html += `<div style="font-size:0.85em; margin-bottom:10px; color:#555;">NGペア（8近傍隣接）は絶対制約として探索段階で除外しています。</div>`;
-    const d = log.details;
     const rh = d.ruleHints || {};
     const hintFront = rh.front || '基準1000点・1段階ごとに100点減算';
     const hintBack = rh.back || '基準1000点・1段階ごとに100点減算';
@@ -4186,6 +4265,9 @@ function showLogModal() {
     const hintWin = rh.window || '基準330点・1段階ごとに33点減算';
     const hintCor = rh.corridor || '基準330点・1段階ごとに33点減算';
     const hintSeat = rh.seat || `同じ座席: 基準600点・1段階ごとに15点減算（直近15段階） / 近傍8マス: 同点の20%（上限5回）`;
+    if (Array.isArray(d.individualPenaltyRows)) {
+        html += renderRotationDupPenalty('生徒別の不利益（違反の合算）', `最大${formatPenaltyPoints(d.maxIndividualPenalty)}点・${d.penalizedStudentCount || 0}人`, d, 'individualPenaltyRows', 'legacyIndividualPenaltyRows', 'log-det-individual', d.totalScore);
+    }
     html += renderRotationDupPenalty('前列重複（currMinR/currMinR+1）', hintFront, d, 'frontDupRows', 'frontDupStrs', 'log-det-front', d.scoreFront);
     html += renderRotationDupPenalty('後列重複（currMaxR/currMaxR-1）', hintBack, d, 'backDupRows', 'backDupStrs', 'log-det-back', d.scoreBack);
     html += renderPenalty('過去の机ペア重複（a-b/c-d/e-f）', hintPair, d.pastPairStrs, 'log-det-pp', d.scorePair);
@@ -4199,8 +4281,8 @@ function showLogModal() {
     html += `</div><div class="log-section" style="background:#fff3cd; border-color:#ffeeba;">
         <h3 style="color:#856404; border-bottom-color:#ffeeba;">AIからのレポート</h3>
         <p style="font-size:0.9em; line-height:1.6; color:#555; margin:0;">`;
-    if (log.finalScore === 0) html += `<b>最適化が完了しました。</b><br>絶対制約を守ったうえで、優先ルール上のスコア0を達成しています。`;
-    else html += `絶対制約はすべて満たしています。<br>優先ルール（前列/後列/机ペア/窓側/廊下側/同席）のトレードオフを最小化した配置です。`;
+    if (log.finalScore === 0) html += `<b>最適化が完了しました。</b><br>絶対制約を守ったうえで、優先ルール上のペナルティ0を達成しています。`;
+    else html += `絶対制約はすべて満たしています。<br>まず一人に集中する不利益を抑え、次に不利益の分布、最後に合計点を比較した配置です。`;
     html += `</p></div>`;
     document.getElementById('log-content-area').innerHTML = html; document.getElementById('log-modal').style.display = 'flex';
 }
@@ -4251,24 +4333,28 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
 
         let eliteIdx = 0;
         let bestAssign;
+        let bestDetails;
         let finalScore;
         if (saResults.length === 0) {
             bestAssign = [...initialSolutions[0]];
-            finalScore = evaluateAssignment(bestAssign).totalScore;
+            bestDetails = evaluateAssignment(bestAssign);
+            finalScore = bestDetails.totalScore;
         } else {
             for (let i = 1; i < saResults.length; i++) {
-                if (saResults[i].finalScore < saResults[eliteIdx].finalScore) eliteIdx = i;
+                if (compareSoftConstraintEvaluations(saResults[i].bestDetails, saResults[eliteIdx].bestDetails) < 0) eliteIdx = i;
             }
             bestAssign = [...saResults[eliteIdx].bestAssign];
-            finalScore = saResults[eliteIdx].finalScore;
+            bestDetails = saResults[eliteIdx].bestDetails;
+            finalScore = bestDetails.totalScore;
         }
 
         timelineMetrics.phaseBEndActual = performance.now();
 
         // 4) 最終微調整フェーズ（短時間ヒルクライム）
-        const phaseCRun = await runPhaseCHillClimb(bestAssign, finalScore, timelineContext, randomStreams.hill, randomStreams.threeCycleHill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
+        const phaseCRun = await runPhaseCHillClimb(bestAssign, bestDetails, timelineContext, randomStreams.hill, randomStreams.threeCycleHill, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
         if (!phaseCRun) return abortShuffleWithMessage();
         bestAssign = phaseCRun.bestAssign;
+        bestDetails = phaseCRun.bestDetails;
         finalScore = phaseCRun.finalScore;
         const totalEndTime = performance.now();
         hideProgressModal();
@@ -4290,7 +4376,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             hillThreeCycleTrials: phaseCRun.threeCycleTrials,
             hillThreeCycleImprovements: phaseCRun.threeCycleImprovements,
             finalScore: finalScore,
-            details: evaluateAssignment(bestAssign),
+            details: Object.assign(bestDetails, { individualPenaltyRows: buildIndividualPenaltyRows(bestAssign, bestDetails) }),
             multiStartRuns: k,
             eliteIndex: saResults.length > 0 ? eliteIdx : 0,
             seed: shuffleRun.seed,
@@ -5135,12 +5221,9 @@ function evaluateSwapBeforeConfirm(assignment, idx1, idx2) {
     swapped[idx1] = swapped[idx2];
     swapped[idx2] = t;
     const afterDetails = ctx.evaluateAssignment(swapped);
-    const beforeScore = beforeDetails.totalScore;
-    const afterScore = afterDetails.totalScore;
-
-    if (afterScore > beforeScore) {
-        const delta = afterScore - beforeScore;
-        let message = `スコアが悪化します（${beforeScore}点 → ${afterScore}点、+${delta}点）。`;
+    const comparison = compareSoftConstraintEvaluations(afterDetails, beforeDetails);
+    if (comparison > 0) {
+        let message = `公平性評価が悪化します。\n前：${describeFairnessEvaluation(beforeDetails)}\n後：${describeFairnessEvaluation(afterDetails)}`;
         const detailBlock = buildSwapScoreWorsenMessage(beforeDetails, afterDetails, [s1, s2]);
         if (detailBlock) message += '\n\n' + detailBlock;
         return { kind: 'soft', message };
