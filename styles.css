@@ -1004,7 +1004,6 @@ body.print-orientation-portrait {
     width: 100%;
     height: 100%;
     background: #fff;
-    border: 1px solid #d7dbe1;
     padding: 1.5mm;
     box-sizing: border-box;
     display: flex;
@@ -1027,12 +1026,16 @@ body.print-orientation-portrait {
     background: #7f8c8d;
     color: #fff;
     text-align: center;
-    padding: 1.2mm 1.5mm;
+    height: 10.75mm;
+    padding: 0 1.5mm;
     font-weight: bold;
     letter-spacing: 0.04em;
     box-sizing: border-box;
     overflow: hidden;
     min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 .print-desk-class .print-class-name-in-desk {
     display: block;
@@ -1055,6 +1058,12 @@ body.print-orientation-portrait {
     gap: 1mm;
     transform: scaleY(-1);
     margin: 0 auto;
+}
+/* A4縦は左端を印刷領域から1.5mmにそろえ、行間を作らない。 */
+body.print-orientation-portrait .print-seat-grid {
+    row-gap: 0;
+    margin-left: 0;
+    margin-right: 0;
 }
 .print-seat {
     border: 1px solid var(--seat-border);

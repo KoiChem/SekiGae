@@ -2170,22 +2170,30 @@ function fitPrintGridLayout(grid, rows, cols) {
 
     const gridStyle = window.getComputedStyle(grid);
     const gapX = parseFloat(gridStyle.columnGap) || 0;
-    const gapY = parseFloat(gridStyle.rowGap) || gapX || 0;
+    const rowGap = parseFloat(gridStyle.rowGap);
+    // row-gap: 0 は有効値のため、横方向の gap で置き換えない。
+    const gapY = Number.isFinite(rowGap) ? rowGap : gapX;
 
     const classroomRect = classroom.getBoundingClientRect();
     const deskRect = desk.getBoundingClientRect();
     const classStyle = window.getComputedStyle(classroom);
-    const availableW = Math.max(50, classroomRect.width - (parseFloat(classStyle.paddingLeft) || 0) - (parseFloat(classStyle.paddingRight) || 0) - 2);
-    const availableH = Math.max(50, classroomRect.height - deskRect.height - (parseFloat(classStyle.paddingTop) || 0) - (parseFloat(classStyle.paddingBottom) || 0) - gapY - 2);
+    const availableW = Math.max(50, classroomRect.width - (parseFloat(classStyle.paddingLeft) || 0) - (parseFloat(classStyle.paddingRight) || 0));
+    const availableH = Math.max(50, classroomRect.height - deskRect.height - (parseFloat(classStyle.paddingTop) || 0) - (parseFloat(classStyle.paddingBottom) || 0) - gapY);
 
-    // 列数/行数に応じて最大サイズを計算
+    if (printOrientation === 'portrait') {
+        // A4縦は6列を基準に机を4:3で固定し、使用行・列の数によって伸縮させない。
+        // 行間はCSSで0mmとし、残る高さは後方側の余白として残す。
+        const fixedCols = NUM_COLS;
+        const cellW = Math.max(1, (availableW - (fixedCols - 1) * gapX) / fixedCols);
+        const cellH = cellW * 0.75;
+        grid.style.width = `${cols * cellW + (cols - 1) * gapX}px`;
+        grid.style.height = `${rows * cellH + (rows - 1) * gapY}px`;
+        return;
+    }
+
+    // A4横は従来の比率を保ち、教卓の高さを差し引いた領域へ収める。
     const maxCellWByWidth = (availableW - (cols - 1) * gapX) / cols;
-    // A4縦は横幅が狭く縦に余裕があるため、席を縦方向にも広げて用紙を有効活用する。
-    // A4横は従来の比率を維持する。
-    const portraitRatioBySpace = (availableH - (rows - 1) * gapY) / Math.max(1, rows * maxCellWByWidth);
-    const seatHeightRatio = printOrientation === 'portrait'
-        ? Math.min(1.25, Math.max(0.82, portraitRatioBySpace))
-        : (rows >= 7 ? 0.62 : rows >= 6 ? 0.68 : 0.75);
+    const seatHeightRatio = rows >= 7 ? 0.62 : rows >= 6 ? 0.68 : 0.75;
     let low = 1;
     let high = Math.max(1, maxCellWByWidth);
     for (let i = 0; i < 24; i++) {
