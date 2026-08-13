@@ -783,6 +783,8 @@ let checkerboardOffset = 0;
 let printInactiveMode = 'hide';
 /** 印刷用紙の向き。保存データ形式へは追加せず、起動時は従来通り A4 横とする。 */
 let printOrientation = 'landscape';
+/** 印刷プレビュー専用の視点。null は通常画面の現在視点を引き継ぐ。保存データには含めない。 */
+let printIsStudentView = null;
 // 例外席選択中、座席固定により反転禁止となっている席のインデックス集合
 let protectedExceptionSeats = new Set();
 /** バックアップ読込で選択モーダルを出すまで保持する解析済み JSON オブジェクト */
@@ -1959,6 +1961,21 @@ function updatePrintInactiveToggleUi() {
     btn.classList.toggle('btn-outline', !isFrame);
 }
 
+function getPrintStudentView() {
+    return printIsStudentView === null ? isStudentView : printIsStudentView;
+}
+
+function updatePrintViewToggleUi() {
+    const btn = document.getElementById('btn-print-view-toggle');
+    if (!btn) return;
+    const isPrintStudentView = getPrintStudentView();
+    btn.textContent = isPrintStudentView ? '視点: 生徒側' : '視点: 教員側';
+    btn.setAttribute('aria-pressed', isPrintStudentView ? 'true' : 'false');
+    btn.setAttribute('aria-label', isPrintStudentView
+        ? '現在は生徒側からの視点です。教員側へ切り替えます'
+        : '現在は教員側からの視点です。生徒側へ切り替えます');
+}
+
 function normalizePrintOrientation(value) {
     return value === 'portrait' ? 'portrait' : 'landscape';
 }
@@ -2016,18 +2033,31 @@ function togglePrintInactiveDisplay() {
     saveCurrentClassData();
 }
 
+function togglePrintView() {
+    if (!document.body.classList.contains('print-mode')) return;
+    printIsStudentView = !getPrintStudentView();
+    updatePrintViewToggleUi();
+    renderPrintLayout();
+    requestAnimationFrame(() => {
+        requestAnimationFrame(updatePrintToolbarInset);
+    });
+}
+
 function togglePrintMode() {
     document.body.classList.toggle('print-mode');
     const isPrintMode = document.body.classList.contains('print-mode');
     document.getElementById('print-overlay').style.display = isPrintMode ? 'block' : 'none';
     if (isPrintMode) {
+        printIsStudentView = isStudentView;
         applyPrintOrientation();
         updatePrintInactiveToggleUi();
+        updatePrintViewToggleUi();
         renderPrintLayout();
         requestAnimationFrame(() => {
             requestAnimationFrame(updatePrintToolbarInset);
         });
     } else {
+        printIsStudentView = null;
         document.documentElement.style.removeProperty('--print-toolbar-h');
         const printRoot = document.getElementById('print-root');
         if (printRoot) printRoot.innerHTML = '';
@@ -2076,7 +2106,7 @@ function renderPrintLayout() {
     const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
     const visibleRows = Math.max(1, bounds.currMaxR - bounds.currMinR + 1);
 
-    printRoot.classList.toggle('student-view', Boolean(isStudentView));
+    printRoot.classList.toggle('student-view', getPrintStudentView());
     const printDeskHtml = buildDeskTitleInnerHtml();
     printRoot.innerHTML = `
         <div class="print-page">

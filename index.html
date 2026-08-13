@@ -243,11 +243,12 @@
             <label><input type="radio" name="print-orientation" value="portrait" onchange="setPrintOrientation(this.value)"> A4縦</label>
             <label><input type="radio" name="print-orientation" value="landscape" onchange="setPrintOrientation(this.value)" checked> A4横</label>
         </fieldset>
+        <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-view-toggle" onclick="togglePrintView()">視点: 教員側</button>
         <button class="btn print-toolbar-btn" onclick="executePrint()">印刷・PDF保存</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-inactive-toggle" onclick="togglePrintInactiveDisplay()">空席: 非表示</button>
         <button class="btn btn-outline print-toolbar-btn" onclick="togglePrintMode()">キャンセル</button>
     </div>
-    <div class="print-preview-help">A4縦／A4横を選択後、「印刷・PDF保存」を押してください</div>
+    <div class="print-preview-help">用紙の向きと視点を選択後、「印刷・PDF保存」を押してください</div>
 </div>
 <div id="print-root"></div>
 
