@@ -88,11 +88,11 @@ function createShuffleRandomStreams(seed) {
 const PREFIX = 'SekigaeKun_v6_'; 
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
-const SHUFFLE_ALGORITHM_VERSION = 'seed-v3-individual-fairness';
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v4-time-priority';
 const UINT32_MAX = 0xFFFFFFFF;
 /**
- * seed 指定時の再現性を優先した探索上限。時間ではなく試行回数で停止する。
- * 20秒は別途、結果を採用しない安全停止としてだけ使用する。
+ * 最初の探索ラウンドに必ず使う基準試行回数。非ゼロ解では、この後も時間上限まで
+ * 再加熱探索を重ねる。seed は初期探索の順序を安定させる用途で、完全再現は保証しない。
  */
 const SEEDED_SEARCH_BUDGETS = Object.freeze({
     initialStarts: 5,
@@ -103,6 +103,9 @@ const SEEDED_SEARCH_BUDGETS = Object.freeze({
     yieldEveryProposals: 3000,
     safetyCheckInterval: 256
 });
+/** 結果反映・描画の余白を残し、20秒の安全上限より少し前まで探索する。 */
+const SEARCH_TIME_LIMIT_MS = 20000;
+const SEARCH_FINISH_MARGIN_MS = 250;
 /** 第2段階: 既存の2席交換を維持しつつ、固定比率で3人循環も試行する。 */
 const THREE_CYCLE_EVERY_NTH_PROPOSAL = 4;
 
@@ -2962,6 +2965,10 @@ function calcAllowedSeatsForStudent(s, isCheckerboard, bounds) {
 }
 
 function yieldToBrowser() { return new Promise(resolve => setTimeout(resolve, 0)); }
+function hasSearchTimeRemaining(safetyContext) {
+    const now = performance.now();
+    return now < safetyContext.searchEndDeadline && now < safetyContext.totalEndDeadline;
+}
 
 function shuffleArray(arr, random) {
     const clone = [...arr];
@@ -3166,11 +3173,7 @@ function abortShuffleWithMessage(message = "シャッフルを中止しました
 function handleShuffleUnexpectedError(error) {
     console.error(error);
     hideProgressModal();
-    if (error && error.message === 'SEED_SEARCH_TIMEOUT') {
-        showAlert("20秒以内に決定的な探索を完了できなかったため、結果を採用せず中止しました。条件を緩めて再実行してください。", 'warning');
-    } else {
-        showAlert("予期せぬエラーが発生しました。設定を見直すかリロードしてください。");
-    }
+    showAlert("予期せぬエラーが発生しました。設定を見直すかリロードしてください。");
     cancelExceptionMode();
     isCalculating = false;
     isShuffleCancelled = false;
@@ -3566,11 +3569,9 @@ async function buildInitialByBacktracking(attemptIndex, context) {
 
     async function dfs() {
         if (isShuffleCancelled) return false;
+        if (!hasSearchTimeRemaining(context.safetyContext)) return false;
         nodeCount++;
         if (nodeCount > SEEDED_SEARCH_BUDGETS.initialNodesPerStart) return false;
-        if (nodeCount % SEEDED_SEARCH_BUDGETS.safetyCheckInterval === 0 && performance.now() > context.safetyContext.totalEndDeadline) {
-            throw new Error('SEED_SEARCH_TIMEOUT');
-        }
         if (unassigned.length === 0) return true;
 
         let bestIdx = -1;
@@ -3629,7 +3630,7 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
     const initialSolutions = [];
     for (let attempt = 0; attempt < maxStarts; attempt++) {
         if (isShuffleCancelled) return null;
-        if (performance.now() >= timelineContext.totalEndDeadline) throw new Error('SEED_SEARCH_TIMEOUT');
+        if (!hasSearchTimeRemaining(timelineContext)) break;
         const progressA = Math.min(25, (attempt / maxStarts) * 25);
         showProgressModal(`初期解を構築中 (${attempt + 1}/${maxStarts})...`, progressA);
         await yieldToBrowser();
@@ -3639,8 +3640,8 @@ async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackin
     return initialSolutions;
 }
 /**
- * 1本の初期解に対し、固定回数の焼きなましを実行する。
- * 温度は試行番号に合わせて減衰するため、実行環境の性能に依存しない。
+ * 1本の初期解に対し、1ラウンド分の焼きなましを実行する。
+ * 温度はラウンド内の試行番号に合わせて減衰し、非ゼロ解ではこのラウンドを再加熱して繰り返す。
  */
 async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, context) {
     let currentAssign = [...initialAssign];
@@ -3654,11 +3655,8 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0, loopCount = 0;
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
 
-    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentScore > 0; proposalIndex++) {
+    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentScore > 0 && hasSearchTimeRemaining(context.safetyContext); proposalIndex++) {
         if (isShuffleCancelled) return null;
-        if (proposalIndex % SEEDED_SEARCH_BUDGETS.safetyCheckInterval === 0 && performance.now() > context.safetyContext.totalEndDeadline) {
-            throw new Error('SEED_SEARCH_TIMEOUT');
-        }
         if (swappableIndicesLocal.length < 2) break;
         const useThreeCycle = (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
         let candidate;
@@ -3718,7 +3716,7 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
             const withinSlot = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
             const progress = 25 + Math.min(65, ((runIdx + withinSlot) / runTotal) * 65);
             context.showProgress({
-                phase: `焼きなまし ${runIdx + 1}/${runTotal}`,
+                phase: `${context.phaseName || '焼きなまし'} ${runIdx + 1}/${runTotal}`,
                 trials: swapTrials,
                 score: finalScore
             }, progress, context.formatProgressDetails(bestDetails));
@@ -3746,7 +3744,7 @@ async function runPhaseBMultiStart(initialSolutions, annealingContext) {
     for (let i = 0; i < k; i++) {
         if (isShuffleCancelled) return null;
         await yieldToBrowser();
-        if (performance.now() >= annealingContext.safetyContext.totalEndDeadline) throw new Error('SEED_SEARCH_TIMEOUT');
+        if (!hasSearchTimeRemaining(annealingContext.safetyContext)) break;
         const res = await runPhaseBSimulatedAnnealing(initialSolutions[i], i, k, annealingContext);
         if (!res) return null;
         saResults.push(res);
@@ -3764,11 +3762,8 @@ async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random
     const swappableIndices = collectSwappableIndices(bestAssign);
     let hillLoop = 0;
     let swapTrials = 0, swapImprovements = 0, threeCycleTrials = 0, threeCycleImprovements = 0;
-    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.hillProposals && finalScore > 0; proposalIndex++) {
+    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.hillProposals && finalScore > 0 && hasSearchTimeRemaining(safetyContext); proposalIndex++) {
         if (isShuffleCancelled) return null;
-        if (proposalIndex % SEEDED_SEARCH_BUDGETS.safetyCheckInterval === 0 && performance.now() > safetyContext.totalEndDeadline) {
-            throw new Error('SEED_SEARCH_TIMEOUT');
-        }
         if (swappableIndices.length < 2) break;
         const useThreeCycle = (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
         let candidate;
@@ -3806,6 +3801,47 @@ async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random
         }
     }
     return { bestAssign, bestDetails, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements };
+}
+/**
+ * 非ゼロ解だけに行う追加の再加熱探索。時間優先のため、同一seedでも端末性能により
+ * ラウンド数は変わり得るが、20秒近くまで別の探索経路を試して最良解を保持する。
+ */
+async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, annealingContext) {
+    let reheats = 0;
+    let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0;
+    let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
+    const reheatContext = Object.assign({}, annealingContext, { phaseName: '追加再加熱探索' });
+
+    while (bestDetails.totalScore > 0 && hasSearchTimeRemaining(annealingContext.safetyContext)) {
+        const result = await runPhaseBSimulatedAnnealing(bestAssign, 0, 1, reheatContext);
+        if (!result) return null;
+        reheats++;
+        swapTrials += result.swapTrials;
+        swapImprovements += result.swapImprovements;
+        acceptedWorse += result.acceptedWorse;
+        threeCycleTrials += result.threeCycleTrials;
+        threeCycleImprovements += result.threeCycleImprovements;
+        threeCycleAcceptedWorse += result.threeCycleAcceptedWorse;
+        if (compareSoftConstraintEvaluations(result.bestDetails, bestDetails) < 0) {
+            bestAssign = result.bestAssign;
+            bestDetails = result.bestDetails;
+        }
+        // 連続した長時間計算でもキャンセル・描画を受け付ける。
+        await yieldToBrowser();
+    }
+
+    return {
+        bestAssign,
+        bestDetails,
+        finalScore: bestDetails.totalScore,
+        reheats,
+        swapTrials,
+        swapImprovements,
+        acceptedWorse,
+        threeCycleTrials,
+        threeCycleImprovements,
+        threeCycleAcceptedWorse
+    };
 }
 
 function escapeHtml(str) {
@@ -4178,10 +4214,11 @@ function showLogModal() {
             <h3>AI最適化プロセス</h3>
             <ul class="log-list">
                 ${log.seed != null ? `<li>・使用seed：<b>${log.seed}</b>${log.seedSource === 'automatic' ? '（自動生成）' : '（指定）'} ／ アルゴリズム <b>${escapeHtml(log.algorithmVersion || '')}</b></li>` : ''}
-                <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （20秒は安全停止。探索回数は固定）</li>
+                <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （ペナルティが残る場合は約20秒まで探索。0なら早期終了）</li>
                 <li>・初期解生成（MRVバックトラッキング）：<b>${(log.phaseATime || 0).toFixed(2)} 秒</b>${log.multiStartRuns != null ? `（生成 <b>${log.multiStartRuns}</b> 通り）` : ''}</li>
                 <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : ''}</li>
                 <li>・最終微調整（山登り）：<b>${(log.phaseCTime || 0).toFixed(2)} 秒</b></li>
+                ${log.phaseDTime != null ? `<li>・追加再加熱探索：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（${log.reheatRuns.toLocaleString()} ラウンド）` : '（ペナルティ0のため不要）'}</li>` : ''}
                 <li>・試行スワップ：<b>${(log.swapTrials || 0).toLocaleString()}回</b>（悪化受理 ${(log.acceptedWorse || 0).toLocaleString()}回）</li>
                 ${log.threeCycleTrials != null ? `<li>・3人循環：<b>${log.threeCycleTrials.toLocaleString()}回</b>（SAでの改善 ${(log.threeCycleImprovements || 0).toLocaleString()}回、悪化受理 ${(log.threeCycleAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillThreeCycleTrials || 0).toLocaleString()}回、改善 ${(log.hillThreeCycleImprovements || 0).toLocaleString()}回）</li>` : ''}
                 <li>・最終評価順序：<b>最大個人負担 → 個人負担の分布 → 合計点</b></li>
@@ -4295,10 +4332,10 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             throw new Error('SHUFFLE_SEED_MISSING');
         }
         const totalStartTime = performance.now();
-        const maxDurationMs = 20000;
         const timelineContext = {
             totalStartTime,
-            totalEndDeadline: totalStartTime + maxDurationMs
+            searchEndDeadline: totalStartTime + SEARCH_TIME_LIMIT_MS - SEARCH_FINISH_MARGIN_MS,
+            totalEndDeadline: totalStartTime + SEARCH_TIME_LIMIT_MS
         };
         const randomStreams = createShuffleRandomStreams(shuffleRun.seed);
         showProgressModal("準備中...", 0);
@@ -4316,7 +4353,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         const MULTI_START_TARGET = SEEDED_SEARCH_BUDGETS.initialStarts;
         // 2) 初期解構築フェーズ（複数スタート候補をバックトラックで生成）
 
-        const timelineMetrics = { phaseAStart: performance.now(), phaseAEndActual: 0, tAfterA: 0, phaseBEndActual: 0 };
+        const timelineMetrics = { phaseAStart: performance.now(), phaseAEndActual: 0, tAfterA: 0, phaseBEndActual: 0, phaseCEndActual: 0, phaseDEndActual: 0 };
         const initialSolutions = await runPhaseAInitialSolutions(MULTI_START_TARGET, timelineContext, backtrackingContext);
         if (initialSolutions == null) return abortShuffleWithMessage();
         timelineMetrics.phaseAEndActual = performance.now();
@@ -4356,21 +4393,32 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         bestAssign = phaseCRun.bestAssign;
         bestDetails = phaseCRun.bestDetails;
         finalScore = phaseCRun.finalScore;
+        timelineMetrics.phaseCEndActual = performance.now();
+
+        // 5) 非ゼロ解では、残り時間を再加熱探索へ充てる。期限到達時にも最良解を採用する。
+        const phaseDRun = await runPhaseDTimePriorityReheats(bestAssign, bestDetails, annealingContext);
+        if (!phaseDRun) return abortShuffleWithMessage();
+        bestAssign = phaseDRun.bestAssign;
+        bestDetails = phaseDRun.bestDetails;
+        finalScore = phaseDRun.finalScore;
+        timelineMetrics.phaseDEndActual = performance.now();
         const totalEndTime = performance.now();
         hideProgressModal();
 
-        // 5) 結果反映フェーズ（ログ保存・プレビュー反映・通知）
+        // 6) 結果反映フェーズ（ログ保存・プレビュー反映・通知）
         lastShuffleLog = {
             totalTime: (totalEndTime - timelineContext.totalStartTime) / 1000,
             phaseATime: (timelineMetrics.phaseAEndActual - timelineMetrics.phaseAStart) / 1000,
             phaseBTime: (timelineMetrics.phaseBEndActual - timelineMetrics.tAfterA) / 1000,
-            phaseCTime: (totalEndTime - timelineMetrics.phaseBEndActual) / 1000,
-            swapTrials: swapTrials,
-            swapImprovements: swapImprovements,
-            acceptedWorse: acceptedWorse,
-            threeCycleTrials: threeCycleTrials,
-            threeCycleImprovements: threeCycleImprovements,
-            threeCycleAcceptedWorse: threeCycleAcceptedWorse,
+            phaseCTime: (timelineMetrics.phaseCEndActual - timelineMetrics.phaseBEndActual) / 1000,
+            phaseDTime: (timelineMetrics.phaseDEndActual - timelineMetrics.phaseCEndActual) / 1000,
+            reheatRuns: phaseDRun.reheats,
+            swapTrials: swapTrials + phaseDRun.swapTrials,
+            swapImprovements: swapImprovements + phaseDRun.swapImprovements,
+            acceptedWorse: acceptedWorse + phaseDRun.acceptedWorse,
+            threeCycleTrials: threeCycleTrials + phaseDRun.threeCycleTrials,
+            threeCycleImprovements: threeCycleImprovements + phaseDRun.threeCycleImprovements,
+            threeCycleAcceptedWorse: threeCycleAcceptedWorse + phaseDRun.threeCycleAcceptedWorse,
             hillSwapTrials: phaseCRun.swapTrials,
             hillSwapImprovements: phaseCRun.swapImprovements,
             hillThreeCycleTrials: phaseCRun.threeCycleTrials,
