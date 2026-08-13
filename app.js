@@ -82,7 +82,10 @@ function createShuffleRandomStreams(seed) {
         twoPairAnnealing: createSeededRandom(deriveShuffleSeed(seed, 0x456789AB)),
         hill: createSeededRandom(deriveShuffleSeed(seed, 0x90ABCDEF)),
         threeCycleHill: createSeededRandom(deriveShuffleSeed(seed, 0x13579BDF)),
-        twoPairHill: createSeededRandom(deriveShuffleSeed(seed, 0x2468ACE0))
+        twoPairHill: createSeededRandom(deriveShuffleSeed(seed, 0x2468ACE0)),
+        targetedRepair: createSeededRandom(deriveShuffleSeed(seed, 0xBADC0FFE)),
+        threeCycleTargetedRepair: createSeededRandom(deriveShuffleSeed(seed, 0xC001D00D)),
+        twoPairTargetedRepair: createSeededRandom(deriveShuffleSeed(seed, 0x0D15EA5E))
     };
 }
 
@@ -90,12 +93,12 @@ function createShuffleRandomStreams(seed) {
 const PREFIX = 'SekigaeKun_v6_'; 
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
-const SHUFFLE_ALGORITHM_VERSION = 'seed-v6-diverse-elite-reheats';
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v7-focused-reheat-repair';
 const UINT32_MAX = 0xFFFFFFFF;
 /**
  * 初期解を広く生成してから、品質上位と配置が異なる候補だけを焼きなましへ進める。
- * 非ゼロ解では、その候補群を再加熱で巡回する。seed は探索順の手がかりであり、
- * 時間上限までの探索結果の完全再現は保証しない。
+ * 非ゼロ解では、短い再加熱で候補を絞り、残る違反を局所修復する。seed は探索順の
+ * 手がかりであり、時間上限までの探索結果の完全再現は保証しない。
  */
 const SEEDED_SEARCH_BUDGETS = Object.freeze({
     initialStarts: 20,
@@ -104,6 +107,12 @@ const SEEDED_SEARCH_BUDGETS = Object.freeze({
     initialNodesPerStart: 40000,
     annealingProposalsPerStart: 15000,
     hillProposals: 30000,
+    reheatScoutProposalsPerStart: 5000,
+    reheatFocusedProposalsPerStart: 15000,
+    reheatFocusedEliteStarts: 2,
+    reheatFocusedDiverseStarts: 1,
+    reheatFocusedMaxSweeps: 2,
+    targetedRepairProposals: 120000,
     yieldEveryInitialNodes: 500,
     yieldEveryProposals: 3000,
     safetyCheckInterval: 256
@@ -3762,14 +3771,14 @@ function getAssignmentSeatDifference(left, right) {
  * 初期解プールから、品質上位を残しつつ、それらから最も離れた配置を貪欲に追加する。
  * 多様候補は「選ばれた候補のどれとも十分に違う」ことを優先し、同率なら品質で決める。
  */
-function selectInitialSolutionsForAnnealing(initialSolutions, evaluateAssignment) {
-    const ranked = initialSolutions
-        .map((assignment, originalIndex) => ({ assignment, originalIndex, details: evaluateAssignment(assignment) }))
+function selectDiverseSearchEntries(entries, eliteCountLimit, diverseCountLimit) {
+    const ranked = entries
+        .map((entry, originalIndex) => Object.assign({}, entry, { originalIndex }))
         .sort((left, right) => compareSoftConstraintEvaluations(left.details, right.details) || left.originalIndex - right.originalIndex);
-    const eliteCount = Math.min(SEEDED_SEARCH_BUDGETS.eliteStarts, ranked.length);
+    const eliteCount = Math.min(eliteCountLimit, ranked.length);
     const selected = ranked.slice(0, eliteCount);
     const remaining = ranked.slice(eliteCount);
-    const targetCount = Math.min(ranked.length, SEEDED_SEARCH_BUDGETS.eliteStarts + SEEDED_SEARCH_BUDGETS.diverseStarts);
+    const targetCount = Math.min(ranked.length, eliteCountLimit + diverseCountLimit);
 
     while (selected.length < targetCount && remaining.length > 0) {
         let bestRemainingIndex = 0;
@@ -3795,11 +3804,19 @@ function selectInitialSolutionsForAnnealing(initialSolutions, evaluateAssignment
         diverseCount: selected.length - eliteCount
     };
 }
+
+function selectInitialSolutionsForAnnealing(initialSolutions, evaluateAssignment) {
+    return selectDiverseSearchEntries(
+        initialSolutions.map(assignment => ({ assignment, details: evaluateAssignment(assignment) })),
+        SEEDED_SEARCH_BUDGETS.eliteStarts,
+        SEEDED_SEARCH_BUDGETS.diverseStarts
+    );
+}
 /**
  * 1本の初期解に対し、1ラウンド分の焼きなましを実行する。
  * 温度は合計ペナルティの悪化量に対して減衰させ、最良解の採用だけは公平性順序で行う。
  */
-async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, context) {
+async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, context, proposalBudget = SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart) {
     let currentAssign = [...initialAssign];
     const initialDetails = context.evaluateAssignment(currentAssign);
     let currentScore = initialDetails.totalScore;
@@ -3813,7 +3830,7 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
     let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0, twoPairAcceptedWorse = 0;
 
-    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart && currentScore > 0 && hasSearchTimeRemaining(context.safetyContext); proposalIndex++) {
+    for (let proposalIndex = 0; proposalIndex < proposalBudget && currentScore > 0 && hasSearchTimeRemaining(context.safetyContext); proposalIndex++) {
         if (isShuffleCancelled) return null;
         if (swappableIndicesLocal.length < 2) break;
         let candidate;
@@ -3859,7 +3876,7 @@ async function runPhaseBSimulatedAnnealing(initialAssign, runIdx, runTotal, cont
 
         if (!candidateDetails) candidateDetails = context.evaluateAssignment(candidate);
         const candidateScore = candidateDetails.totalScore;
-        const elapsedRatio = (proposalIndex + 1) / SEEDED_SEARCH_BUDGETS.annealingProposalsPerStart;
+        const elapsedRatio = (proposalIndex + 1) / proposalBudget;
         const t0 = 1800, t1 = 1;
         const temperature = Math.max(t1, t0 * Math.pow(t1 / t0, elapsedRatio));
         const scoreDelta = candidateScore - currentScore;
@@ -4000,25 +4017,18 @@ async function runPhaseCHillClimb(bestAssign, bestDetails, safetyContext, random
     }
     return { bestAssign, bestDetails, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements, twoPairTrials, twoPairCandidates, twoPairImprovements };
 }
-/**
- * 非ゼロ解だけに行う追加の再加熱探索。選抜済みの複数経路を巡回して、
- * 1本の最良解だけへ再スタートが偏ることを防ぐ。
- */
+/** 非ゼロ解だけに行う再加熱。6経路を短く見極めてから、上位2＋多様1へ集中する。 */
 async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, reheatStartAssignments, annealingContext) {
     let reheats = 0;
     let swapTrials = 0, swapImprovements = 0, acceptedWorse = 0;
     let threeCycleTrials = 0, threeCycleImprovements = 0, threeCycleAcceptedWorse = 0;
     let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0, twoPairAcceptedWorse = 0;
-    const reheatContext = Object.assign({}, annealingContext, { phaseName: '追加再加熱探索' });
+    const scoutContext = Object.assign({}, annealingContext, { phaseName: '再加熱候補を評価中' });
+    const focusedContext = Object.assign({}, annealingContext, { phaseName: '再加熱を絞込中' });
     const restartAssignments = reheatStartAssignments.map(assignment => [...assignment]);
     if (restartAssignments.length === 0) restartAssignments.push([...bestAssign]);
 
-    while (bestDetails.totalScore > 0 && hasSearchTimeRemaining(annealingContext.safetyContext)) {
-        const restartIndex = reheats % restartAssignments.length;
-        const result = await runPhaseBSimulatedAnnealing(restartAssignments[restartIndex], restartIndex, restartAssignments.length, reheatContext);
-        if (!result) return null;
-        restartAssignments[restartIndex] = [...result.bestAssign];
-        reheats++;
+    const addResultStats = result => {
         swapTrials += result.swapTrials;
         swapImprovements += result.swapImprovements;
         acceptedWorse += result.acceptedWorse;
@@ -4029,12 +4039,51 @@ async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, reheatStart
         twoPairCandidates += result.twoPairCandidates;
         twoPairImprovements += result.twoPairImprovements;
         twoPairAcceptedWorse += result.twoPairAcceptedWorse;
-        if (compareSoftConstraintEvaluations(result.bestDetails, bestDetails) < 0) {
-            bestAssign = result.bestAssign;
-            bestDetails = result.bestDetails;
-        }
-        // 連続した長時間計算でもキャンセル・描画を受け付ける。
+    };
+    const adoptGlobalBest = result => {
+        if (compareSoftConstraintEvaluations(result.bestDetails, bestDetails) >= 0) return false;
+        bestAssign = result.bestAssign;
+        bestDetails = result.bestDetails;
+        return true;
+    };
+
+    const scoutEntries = [];
+    for (let index = 0; index < restartAssignments.length && bestDetails.totalScore > 0 && hasSearchTimeRemaining(annealingContext.safetyContext); index++) {
+        const result = await runPhaseBSimulatedAnnealing(restartAssignments[index], index, restartAssignments.length, scoutContext, SEEDED_SEARCH_BUDGETS.reheatScoutProposalsPerStart);
+        if (!result) return null;
+        reheats++;
+        addResultStats(result);
+        adoptGlobalBest(result);
+        scoutEntries.push({ assignment: [...result.bestAssign], details: result.bestDetails });
         await yieldToBrowser();
+    }
+
+    const focusedSelection = selectDiverseSearchEntries(
+        scoutEntries.length > 0 ? scoutEntries : [{ assignment: [...bestAssign], details: bestDetails }],
+        SEEDED_SEARCH_BUDGETS.reheatFocusedEliteStarts,
+        SEEDED_SEARCH_BUDGETS.reheatFocusedDiverseStarts
+    );
+    const focusedEntries = focusedSelection.entries;
+    let focusedSweeps = 0;
+    let stoppedForStagnation = false;
+    for (let sweep = 0; sweep < SEEDED_SEARCH_BUDGETS.reheatFocusedMaxSweeps && bestDetails.totalScore > 0 && hasSearchTimeRemaining(annealingContext.safetyContext); sweep++) {
+        let sweepImproved = false;
+        for (let index = 0; index < focusedEntries.length && bestDetails.totalScore > 0 && hasSearchTimeRemaining(annealingContext.safetyContext); index++) {
+            const entry = focusedEntries[index];
+            const result = await runPhaseBSimulatedAnnealing(entry.assignment, index, focusedEntries.length, focusedContext, SEEDED_SEARCH_BUDGETS.reheatFocusedProposalsPerStart);
+            if (!result) return null;
+            reheats++;
+            addResultStats(result);
+            entry.assignment = [...result.bestAssign];
+            entry.details = result.bestDetails;
+            if (adoptGlobalBest(result)) sweepImproved = true;
+            await yieldToBrowser();
+        }
+        focusedSweeps++;
+        if (!sweepImproved) {
+            stoppedForStagnation = true;
+            break;
+        }
     }
 
     return {
@@ -4042,6 +4091,10 @@ async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, reheatStart
         bestDetails,
         finalScore: bestDetails.totalScore,
         reheats,
+        scoutRouteCount: scoutEntries.length,
+        focusedRouteCount: focusedEntries.length,
+        focusedSweeps,
+        stoppedForStagnation,
         swapTrials,
         swapImprovements,
         acceptedWorse,
@@ -4053,6 +4106,90 @@ async function runPhaseDTimePriorityReheats(bestAssign, bestDetails, reheatStart
         twoPairImprovements,
         twoPairAcceptedWorse
     };
+}
+
+/** 残る不利益の当事者が座る可動席。空なら通常の可動席へ退避する。 */
+function collectPenaltyFocusedIndices(assignment, details) {
+    const penalized = new Set(Object.entries(details.studentPenaltyById || {})
+        .filter(([, points]) => Number(points) > 0)
+        .map(([studentId]) => studentId));
+    return collectSwappableIndices(assignment).filter(seatIdx => assignment[seatIdx] && penalized.has(assignment[seatIdx].id));
+}
+
+function chooseTargetedThreeCycleIndices(assignment, details, random) {
+    const all = collectThreeCycleEligibleIndices(assignment);
+    const focused = collectPenaltyFocusedIndices(assignment, details);
+    if (all.length < 3) return null;
+    if (focused.length === 0 || random() >= 0.85) return chooseThreeDistinctIndices(all, random);
+    const first = focused[Math.floor(random() * focused.length)];
+    const remaining = all.filter(seatIdx => seatIdx !== first);
+    const tail = chooseTwoDistinctItems(remaining, random);
+    return tail ? [first, ...tail] : null;
+}
+
+/** 残る違反の当事者を優先して、改善のみを採用する局所修復。 */
+async function runPhaseETargetedRepair(bestAssign, bestDetails, safetyContext, random, threeCycleRandom, twoPairRandom, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge) {
+    let finalScore = bestDetails.totalScore;
+    let repairLoop = 0;
+    let swapTrials = 0, swapImprovements = 0, threeCycleTrials = 0, threeCycleImprovements = 0;
+    let twoPairTrials = 0, twoPairCandidates = 0, twoPairImprovements = 0;
+    for (let proposalIndex = 0; proposalIndex < SEEDED_SEARCH_BUDGETS.targetedRepairProposals && finalScore > 0 && hasSearchTimeRemaining(safetyContext); proposalIndex++) {
+        if (isShuffleCancelled) return null;
+        const swappableIndices = collectSwappableIndices(bestAssign);
+        if (swappableIndices.length < 2) break;
+        const focusedIndices = collectPenaltyFocusedIndices(bestAssign, bestDetails);
+        let candidate;
+        let candidateDetails;
+        let isThreeCycle = false;
+        let isTwoPairReorganization = false;
+        const useTwoPairReorganization = (proposalIndex + 1) % HILL_TWO_PAIR_REORGANIZE_EVERY_NTH_PROPOSAL === 0;
+        const useThreeCycle = !useTwoPairReorganization && (proposalIndex + 1) % THREE_CYCLE_EVERY_NTH_PROPOSAL === 0;
+        if (useTwoPairReorganization) {
+            const chosenGroups = chooseTwoPairGroupsForReorganization(bestAssign, bestDetails, twoPairRandom);
+            if (!chosenGroups) continue;
+            const candidates = createTwoPairReorganizationCandidates(bestAssign, ...chosenGroups);
+            const selected = selectBestHardValidCandidate(candidates, swapValidators.isAssignmentHardValid, evaluateAssignment, bestDetails);
+            twoPairTrials++;
+            twoPairCandidates += selected.hardValidCount;
+            if (!selected.candidate) continue;
+            candidate = selected.candidate;
+            candidateDetails = selected.details;
+            isTwoPairReorganization = true;
+        } else if (useThreeCycle) {
+            const chosenIndices = chooseTargetedThreeCycleIndices(bestAssign, bestDetails, threeCycleRandom);
+            if (!chosenIndices) continue;
+            candidate = createThreeCycleCandidate(bestAssign, ...chosenIndices);
+            if (!candidate) continue;
+            threeCycleTrials++;
+            isThreeCycle = true;
+        } else {
+            const firstPool = focusedIndices.length > 0 && random() < 0.85 ? focusedIndices : swappableIndices;
+            const idx1 = firstPool[Math.floor(random() * firstPool.length)];
+            const remaining = swappableIndices.filter(seatIdx => seatIdx !== idx1);
+            if (remaining.length === 0) continue;
+            const idx2 = remaining[Math.floor(random() * remaining.length)];
+            const s1 = bestAssign[idx1], s2 = bestAssign[idx2];
+            if (!swapValidators.canSwapByCheckerboardRule(s1, s2)) continue;
+            candidate = createTwoSwapCandidate(bestAssign, idx1, idx2);
+            swapTrials++;
+        }
+        if (!isTwoPairReorganization && !swapValidators.isAssignmentHardValid(candidate)) continue;
+        if (!candidateDetails) candidateDetails = evaluateAssignment(candidate);
+        if (compareSoftConstraintEvaluations(candidateDetails, bestDetails) < 0) {
+            bestAssign = candidate;
+            bestDetails = candidateDetails;
+            finalScore = bestDetails.totalScore;
+            if (isTwoPairReorganization) twoPairImprovements++;
+            else if (isThreeCycle) threeCycleImprovements++;
+            else swapImprovements++;
+        }
+        repairLoop++;
+        if (repairLoop % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
+            showProgressModal({ phase: '違反当事者を局所修復中', score: finalScore }, safetyContext, formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge));
+            await yieldToBrowser();
+        }
+    }
+    return { bestAssign, bestDetails, finalScore, swapTrials, swapImprovements, threeCycleTrials, threeCycleImprovements, twoPairTrials, twoPairCandidates, twoPairImprovements };
 }
 
 function escapeHtml(str) {
@@ -4440,7 +4577,8 @@ function showLogModal() {
                 <li>・初期解生成（MRVバックトラッキング）：<b>${(log.phaseATime || 0).toFixed(2)} 秒</b>${log.initialSolutionRuns != null ? `（生成 <b>${log.initialSolutionRuns}</b> 通り）` : (log.multiStartRuns != null ? `（生成 <b>${log.multiStartRuns}</b> 通り）` : '')}</li>
                 <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.annealingStartRuns != null ? `（上位 <b>${log.eliteStartRuns}</b> 通り＋多様 <b>${log.diverseStartRuns}</b> 通りの計 <b>${log.annealingStartRuns}</b> 通り／エリートは選抜内第 <b>${(log.eliteIndex ?? 0) + 1}</b>）` : (log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : '')}</li>
                 <li>・最終微調整（山登り）：<b>${(log.phaseCTime || 0).toFixed(2)} 秒</b></li>
-                ${log.phaseDTime != null ? `<li>・追加再加熱探索：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（${log.reheatRuns.toLocaleString()} ラウンド${log.reheatStartRuns ? `／${log.reheatStartRuns} 経路を巡回` : ''}）` : '（ペナルティ0のため不要）'}</li>` : ''}
+                ${log.phaseDTime != null ? `<li>・段階的再加熱：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（短縮評価 ${log.reheatScoutRouteCount || 0} 経路 → 上位 ${log.reheatFocusedRouteCount || 0} 経路を ${log.reheatFocusedSweeps || 0} 巡${log.reheatStoppedForStagnation ? '／停滞で終了' : ''}）` : '（ペナルティ0のため不要）'}</li>` : ''}
+                ${log.phaseETime != null ? `<li>・違反当事者の局所修復：<b>${log.phaseETime.toFixed(2)} 秒</b>（交換 ${(log.targetedSwapTrials || 0).toLocaleString()}回・改善 ${(log.targetedSwapImprovements || 0).toLocaleString()}回／3人循環 ${(log.targetedThreeCycleTrials || 0).toLocaleString()}回・改善 ${(log.targetedThreeCycleImprovements || 0).toLocaleString()}回／2ペア4人再配置 ${(log.targetedTwoPairTrials || 0).toLocaleString()}回・改善 ${(log.targetedTwoPairImprovements || 0).toLocaleString()}回）</li>` : ''}
                 <li>・試行スワップ：<b>${(log.swapTrials || 0).toLocaleString()}回</b>（悪化受理 ${(log.acceptedWorse || 0).toLocaleString()}回）</li>
                 ${log.threeCycleTrials != null ? `<li>・3人循環：<b>${log.threeCycleTrials.toLocaleString()}回</b>（SAでの改善 ${(log.threeCycleImprovements || 0).toLocaleString()}回、悪化受理 ${(log.threeCycleAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillThreeCycleTrials || 0).toLocaleString()}回、改善 ${(log.hillThreeCycleImprovements || 0).toLocaleString()}回）</li>` : ''}
                 ${log.twoPairTrials != null ? `<li>・2ペア4人再配置：<b>${log.twoPairTrials.toLocaleString()}回</b>（有効候補 ${(log.twoPairCandidates || 0).toLocaleString()}通り、SAでの改善 ${(log.twoPairImprovements || 0).toLocaleString()}回、悪化受理 ${(log.twoPairAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillTwoPairTrials || 0).toLocaleString()}回、有効候補 ${(log.hillTwoPairCandidates || 0).toLocaleString()}通り、改善 ${(log.hillTwoPairImprovements || 0).toLocaleString()}回）</li>` : ''}
@@ -4576,7 +4714,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         const MULTI_START_TARGET = SEEDED_SEARCH_BUDGETS.initialStarts;
         // 2) 初期解構築フェーズ（複数スタート候補をバックトラックで生成）
 
-        const timelineMetrics = { phaseAStart: performance.now(), phaseAEndActual: 0, tAfterA: 0, phaseBEndActual: 0, phaseCEndActual: 0, phaseDEndActual: 0 };
+        const timelineMetrics = { phaseAStart: performance.now(), phaseAEndActual: 0, tAfterA: 0, phaseBEndActual: 0, phaseCEndActual: 0, phaseDEndActual: 0, phaseEEndActual: 0 };
         const initialSolutions = await runPhaseAInitialSolutions(MULTI_START_TARGET, timelineContext, backtrackingContext);
         if (initialSolutions == null) return abortShuffleWithMessage();
         timelineMetrics.phaseAEndActual = performance.now();
@@ -4626,13 +4764,21 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             reheatStartAssignments[Math.min(eliteIdx, reheatStartAssignments.length - 1)] = [...bestAssign];
         }
 
-        // 5) 非ゼロ解では、選抜6経路を巡回しつつ残り時間を再加熱探索へ充てる。
+        // 5) 6経路を短く評価し、上位2＋多様1へ絞った再加熱を行う。
         const phaseDRun = await runPhaseDTimePriorityReheats(bestAssign, bestDetails, reheatStartAssignments, annealingContext);
         if (!phaseDRun) return abortShuffleWithMessage();
         bestAssign = phaseDRun.bestAssign;
         bestDetails = phaseDRun.bestDetails;
         finalScore = phaseDRun.finalScore;
         timelineMetrics.phaseDEndActual = performance.now();
+
+        // 6) 再加熱が停滞したら、残る不利益の当事者を優先して局所修復する。
+        const phaseERun = await runPhaseETargetedRepair(bestAssign, bestDetails, timelineContext, randomStreams.targetedRepair, randomStreams.threeCycleTargetedRepair, randomStreams.twoPairTargetedRepair, evaluateAssignment, swapValidators, hasWindowEdge, hasCorridorEdge);
+        if (!phaseERun) return abortShuffleWithMessage();
+        bestAssign = phaseERun.bestAssign;
+        bestDetails = phaseERun.bestDetails;
+        finalScore = phaseERun.finalScore;
+        timelineMetrics.phaseEEndActual = performance.now();
         showProgressModal(
             { phase: finalScore === 0 ? 'ペナルティ0を達成しました' : '探索時間の上限に到達しました', score: finalScore },
             timelineContext,
@@ -4643,14 +4789,19 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         const totalEndTime = performance.now();
         hideProgressModal();
 
-        // 6) 結果反映フェーズ（ログ保存・プレビュー反映・通知）
+        // 7) 結果反映フェーズ（ログ保存・プレビュー反映・通知）
         lastShuffleLog = {
             totalTime: (totalEndTime - timelineContext.totalStartTime) / 1000,
             phaseATime: (timelineMetrics.phaseAEndActual - timelineMetrics.phaseAStart) / 1000,
             phaseBTime: (timelineMetrics.phaseBEndActual - timelineMetrics.tAfterA) / 1000,
             phaseCTime: (timelineMetrics.phaseCEndActual - timelineMetrics.phaseBEndActual) / 1000,
             phaseDTime: (timelineMetrics.phaseDEndActual - timelineMetrics.phaseCEndActual) / 1000,
+            phaseETime: (timelineMetrics.phaseEEndActual - timelineMetrics.phaseDEndActual) / 1000,
             reheatRuns: phaseDRun.reheats,
+            reheatScoutRouteCount: phaseDRun.scoutRouteCount,
+            reheatFocusedRouteCount: phaseDRun.focusedRouteCount,
+            reheatFocusedSweeps: phaseDRun.focusedSweeps,
+            reheatStoppedForStagnation: phaseDRun.stoppedForStagnation,
             swapTrials: swapTrials + phaseDRun.swapTrials,
             swapImprovements: swapImprovements + phaseDRun.swapImprovements,
             acceptedWorse: acceptedWorse + phaseDRun.acceptedWorse,
@@ -4668,13 +4819,19 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
             hillTwoPairTrials: phaseCRun.twoPairTrials,
             hillTwoPairCandidates: phaseCRun.twoPairCandidates,
             hillTwoPairImprovements: phaseCRun.twoPairImprovements,
+            targetedSwapTrials: phaseERun.swapTrials,
+            targetedSwapImprovements: phaseERun.swapImprovements,
+            targetedThreeCycleTrials: phaseERun.threeCycleTrials,
+            targetedThreeCycleImprovements: phaseERun.threeCycleImprovements,
+            targetedTwoPairTrials: phaseERun.twoPairTrials,
+            targetedTwoPairCandidates: phaseERun.twoPairCandidates,
+            targetedTwoPairImprovements: phaseERun.twoPairImprovements,
             finalScore: finalScore,
             details: Object.assign(bestDetails, { individualPenaltyRows: buildIndividualPenaltyRows(bestAssign, bestDetails) }),
             initialSolutionRuns: initialSolutions.length,
             annealingStartRuns: k,
             eliteStartRuns: initialSelection.eliteCount,
             diverseStartRuns: initialSelection.diverseCount,
-            reheatStartRuns: reheatStartAssignments.length,
             eliteIndex: saResults.length > 0 ? eliteIdx : 0,
             seed: shuffleRun.seed,
             seedSource: shuffleRun.seedSource,
