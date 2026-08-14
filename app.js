@@ -650,7 +650,7 @@ function importEdgeSettings(data) {
 }
 
 function edgeAttrBtnLabel(e) {
-    return e === EDGE_WINDOW ? '[窓]' : '[廊下]';
+    return e === EDGE_WINDOW ? '窓' : '廊下';
 }
 
 function updateEdgeToggleButtons() {
@@ -1478,6 +1478,33 @@ function assignPlacementRulesToStudents(students, parsedRuleSet) {
     });
 }
 
+/** 全体ルール由来の盤面ピン種別。座席指定（複数候補を含む）を行・列指定より優先する。 */
+function getOverallRulePinKind(student, parsedRuleSet) {
+    if (!student || !parsedRuleSet) return null;
+    const applicable = (parsedRuleSet.placementRules || []).filter(rule =>
+        studentIdMatchesPrefix(student.id, rule.prefix)
+    );
+    if (applicable.some(rule => rule.kind === 'seat')) return 'seat';
+    if (applicable.some(rule => rule.kind === 'row' || rule.kind === 'col')) return 'row-col';
+    return null;
+}
+
+function updateOverallRulePin(seatEl, student, parsedRuleSet) {
+    const pinEl = seatEl && seatEl.querySelector('.overall-rule-pin');
+    if (!pinEl) return;
+    const kind = getOverallRulePinKind(student, parsedRuleSet);
+    pinEl.hidden = !kind;
+    pinEl.classList.toggle('is-row-col', kind === 'row-col');
+    if (!kind) {
+        pinEl.removeAttribute('aria-label');
+        pinEl.removeAttribute('title');
+        return;
+    }
+    const label = kind === 'seat' ? '全体ルール：座席指定' : '全体ルール：行・列指定';
+    pinEl.setAttribute('aria-label', label);
+    pinEl.title = label;
+}
+
 /** 備考欄 @（…）が論理的に許す座席インデックス集合。hasHardRule が false のときは null（交差チェック対象外）。 */
 function buildPersonalLogicalAllowedSeatSet(personal) {
     if (!personal.hasHardRule) return null;
@@ -2174,7 +2201,12 @@ function initGrid() {
 
         const label = document.createElement('div'); label.className = 'seat-label'; label.innerText = getSeatLabel(i);
         const content = document.createElement('div'); content.className = 'seat-content'; content.id = `seat-content-${i}`;
-        seat.appendChild(label); seat.appendChild(content); grid.appendChild(seat);
+        const pin = document.createElement('span');
+        pin.className = 'overall-rule-pin';
+        pin.hidden = true;
+        pin.setAttribute('role', 'img');
+        pin.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 3.5 20.5 9.5l-3 1.5-3.5 3.5 2 2-1.5 1.5-2-2-5.5 5.5-.5-.5L12 15l-2-2 3.5-3.5 1-3z"/></svg>';
+        seat.appendChild(label); seat.appendChild(content); seat.appendChild(pin); grid.appendChild(seat);
     }
 }
 
@@ -3030,12 +3062,22 @@ function getGridBoundaries() {
     return { currMinR, currMaxR, currMinC, currMaxC };
 }
 
-/** 備考の絶対制約、または全体ルールの席名指し → 前列などの公平化は掛けず、過去ペアのみソフト適用 */
-function studentSkipsNonPairFairness(student) {
+/**
+ * 指定により自由に選べない優先ルールを、評価項目ごとに除外する。
+ * 窓側・廊下側は従来互換のため、備考欄の指定全般と全体ルールの座席指定のみを除外する。
+ */
+function getStudentFairnessExemptions(student) {
     const personal = parsePersonalRuleConstraints(student.flags || '');
-    if (personal.hasHardRule) return true;
-    if (student.appliedOverallRules && student.appliedOverallRules.some(r => r.kind === 'seat')) return true;
-    return false;
+    const overallRules = student.appliedOverallRules || [];
+    const hasOverallPlacement = overallRules.some(rule =>
+        rule.kind === 'seat' || rule.kind === 'row' || rule.kind === 'col'
+    );
+    const hasSeatPlacement = personal.seats.length > 0 || overallRules.some(rule => rule.kind === 'seat');
+    return {
+        frontBack: personal.hasHardRule || hasOverallPlacement,
+        pastSeat: hasSeatPlacement,
+        edge: personal.hasHardRule || overallRules.some(rule => rule.kind === 'seat')
+    };
 }
 
 function calcAllowedSeatsForStudent(s, isCheckerboard, bounds) {
@@ -3215,7 +3257,7 @@ function prepareStudentSeatConstraints(students, checkerboard, gridBounds) {
             return false;
         }
         student.allowedSeats = allowedSeats;
-        student.skipNonPairFairness = studentSkipsNonPairFairness(student);
+        student.fairnessExemptions = getStudentFairnessExemptions(student);
         student.hasFixed = allowedSeats.length <= 1;
     }
     return true;
@@ -3532,7 +3574,7 @@ function weightedSoftScore(depth, base, stepPerDepth) {
 }
 function createSoftConstraintDetails() {
     return {
-        frontDupRows: [], backDupRows: [], windowDupRows: [], corridorDupRows: [], pastPairStrs: [], pastSeatStrs: [],
+        frontDupRows: [], backDupRows: [], windowDupRows: [], corridorDupRows: [], pastPairStrs: [], pastSeatStrs: [], pastSeatRows: [],
         scoreFront: 0, scorePair: 0, scoreBack: 0, scoreWindow: 0, scoreCorridor: 0, scoreSeat: 0,
         studentPenaltyById: Object.create(null), studentPenaltyBreakdownById: Object.create(null), maxIndividualPenalty: 0, penalizedStudentCount: 0
     };
@@ -3639,11 +3681,11 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
         });
     };
 
-    const applyFrontPenalty = (student) => {
+    const applyFrontPenalty = (student, scoreAllowed = true) => {
         context.pastFront[student.id].filter(d => context.fairFB > 0 && d < context.fairFB).forEach(d => {
             const pts = weightedSoftScore(d, context.softFrontBase, context.softFrontStep);
             if (pts <= 0) return;
-            const scored = context.fairFB > 0 && d < context.fairFB;
+            const scored = scoreAllowed && context.fairFB > 0 && d < context.fairFB;
             if (scored) {
                 totalScoreRef.value += pts;
                 details.scoreFront += pts;
@@ -3652,16 +3694,16 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             const dl = depthLabel(d);
             const displayText = scored
                 ? `[${student.id} ${student.name}] 前列側（${dl} +${pts}点）`
-                : `[${student.id} ${student.name}] 前列側（${dl}・スコア対象外）`;
+                : `[${student.id} ${student.name}] 前列側（${dl}・指定のため参考、集計対象外）`;
             addDupRow(details, 'frontDupRows', student.id, pts, scored, displayText);
         });
     };
 
-    const applyBackPenalty = (student) => {
+    const applyBackPenalty = (student, scoreAllowed = true) => {
         context.pastBack[student.id].filter(d => context.fairFB > 0 && d < context.fairFB).forEach(d => {
             const pts = weightedSoftScore(d, context.softBackBase, context.softBackStep);
             if (pts <= 0) return;
-            const scored = context.fairFB > 0 && d < context.fairFB;
+            const scored = scoreAllowed && context.fairFB > 0 && d < context.fairFB;
             if (scored) {
                 totalScoreRef.value += pts;
                 details.scoreBack += pts;
@@ -3670,30 +3712,44 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             const dl = depthLabel(d);
             const displayText = scored
                 ? `[${student.id} ${student.name}] 後列側（${dl} +${pts}点）`
-                : `[${student.id} ${student.name}] 後列側（${dl}・スコア対象外）`;
+                : `[${student.id} ${student.name}] 後列側（${dl}・指定のため参考、集計対象外）`;
             addDupRow(details, 'backDupRows', student.id, pts, scored, displayText);
         });
     };
 
-    const applySeatPenalty = (student, seatIndex) => {
+    const applySeatPenalty = (student, seatIndex, scoreAllowed = true) => {
         context.pastSeatsMap[student.id].filter(h => h.depth < context.fairSeat).forEach(h => {
             const basePts = weightedSoftScore(h.depth, context.softSeatBase, context.softSeatStep);
             if (basePts <= 0) return;
             if (h.seatIdx === seatIndex) {
-                totalScoreRef.value += basePts;
-                details.scoreSeat += basePts;
-                addStudentPenalty(details, student.id, basePts, 'seat');
-                details.pastSeatStrs.push(`[${student.id} ${student.name}] 同じ座席（${depthLabel(h.depth)} +${basePts}点）`);
+                const scored = scoreAllowed;
+                const displayText = scored
+                    ? `[${student.id} ${student.name}] 同じ座席（${depthLabel(h.depth)} +${basePts}点）`
+                    : `[${student.id} ${student.name}] 同じ座席（${depthLabel(h.depth)}・座席指定のため参考、集計対象外）`;
+                if (scored) {
+                    totalScoreRef.value += basePts;
+                    details.scoreSeat += basePts;
+                    addStudentPenalty(details, student.id, basePts, 'seat');
+                    details.pastSeatStrs.push(displayText);
+                }
+                addDupRow(details, 'pastSeatRows', student.id, basePts, scored, displayText);
                 return;
             }
             if (h.depth >= context.fairSeatNear) return;
             if (!isAdjacentIncludingDiagonal(seatIndex, h.seatIdx)) return;
             const nearPts = Math.round(basePts * PAST_SEAT_NEAR_RATIO);
             if (nearPts <= 0) return;
-            totalScoreRef.value += nearPts;
-            details.scoreSeat += nearPts;
-            addStudentPenalty(details, student.id, nearPts, 'seat');
-            details.pastSeatStrs.push(`[${student.id} ${student.name}] 過去座席の近傍8マス（${depthLabel(h.depth)} +${nearPts}点）`);
+            const scored = scoreAllowed;
+            const displayText = scored
+                ? `[${student.id} ${student.name}] 過去座席の近傍8マス（${depthLabel(h.depth)} +${nearPts}点）`
+                : `[${student.id} ${student.name}] 過去座席の近傍8マス（${depthLabel(h.depth)}・座席指定のため参考、集計対象外）`;
+            if (scored) {
+                totalScoreRef.value += nearPts;
+                details.scoreSeat += nearPts;
+                addStudentPenalty(details, student.id, nearPts, 'seat');
+                details.pastSeatStrs.push(displayText);
+            }
+            addDupRow(details, 'pastSeatRows', student.id, nearPts, scored, displayText);
         });
     };
 
@@ -3715,11 +3771,12 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
         if (!assignment[i]) continue;
         const student = assignment[i], row = Math.floor(i / NUM_COLS), col = i % NUM_COLS;
 
-        if (!student.skipNonPairFairness) {
-            const colMinR = context.currMinRByCol[col];
-            const colMaxR = context.currMaxRByCol[col];
-            if (colMinR >= 0 && (row === colMinR || row === colMinR + 1)) applyFrontPenalty(student);
-            if (colMaxR >= 0 && (row === colMaxR || row === colMaxR - 1)) applyBackPenalty(student);
+        const exemptions = student.fairnessExemptions || getStudentFairnessExemptions(student);
+        const colMinR = context.currMinRByCol[col];
+        const colMaxR = context.currMaxRByCol[col];
+        if (colMinR >= 0 && (row === colMinR || row === colMinR + 1)) applyFrontPenalty(student, !exemptions.frontBack);
+        if (colMaxR >= 0 && (row === colMaxR || row === colMaxR - 1)) applyBackPenalty(student, !exemptions.frontBack);
+        if (!exemptions.edge) {
             if (col === b.currMinC) {
                 if (context.edgeMin === EDGE_WINDOW) {
                     applyEdgePenalty(student, context.pastWindow, context.softWindowBase, context.softWindowStep, context.fairWin, 'windowDupRows', 'scoreWindow', '窓側');
@@ -3734,8 +3791,8 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
                     applyEdgePenalty(student, context.pastCorridor, context.softCorridorBase, context.softCorridorStep, context.fairCor, 'corridorDupRows', 'scoreCorridor', '廊下側');
                 }
             }
-            applySeatPenalty(student, i);
         }
+        applySeatPenalty(student, i, !exemptions.pastSeat);
 
         const pairIdx = i % 2 === 0 ? i + 1 : i - 1;
         if (pairIdx >= 0 && pairIdx < TOTAL_SEATS && assignment[pairIdx]) {
@@ -4775,7 +4832,7 @@ function showLogModal() {
     if (boardHasCorridorEdge()) {
         html += renderRotationDupPenalty('廊下側重複（端列・廊下トグル）', hintCor, d, 'corridorDupRows', 'legacyCorStrs', 'log-det-cor', d.scoreCorridor != null ? d.scoreCorridor : 0);
     }
-    html += renderPenalty('過去の座席重複', hintSeat, d.pastSeatStrs, 'log-det-ps', d.scoreSeat);
+    html += renderRotationDupPenalty('過去の座席重複', hintSeat, d, 'pastSeatRows', 'pastSeatStrs', 'log-det-ps', d.scoreSeat);
     html += `</div><div class="log-section" style="background:#fff3cd; border-color:#ffeeba;">
         <h3 style="color:#856404; border-bottom-color:#ffeeba;">配置結果の要約</h3>
         <p style="font-size:0.9em; line-height:1.6; color:#555; margin:0;">`;
@@ -4952,6 +5009,8 @@ function renderAssignments() {
     if (seatGridElement) seatGridElement.classList.toggle('previewing', Boolean(previewAssignment));
     const cfg = getRenderConfig();
     const currentData = cfg.currentData;
+    const rulesEl = document.getElementById('overall-rules');
+    const parsedOverallRules = parseOverallRulesText(rulesEl ? rulesEl.value.trim() : '');
     const previewPointDetails = getPreviewPointDetails();
     const previewLegend = document.getElementById('preview-points-legend');
     const hasPreviewPoints = Boolean(previewPointDetails && Number(previewPointDetails.totalScore) > 0);
@@ -4972,6 +5031,7 @@ function renderAssignments() {
         seatEl.classList.remove('inactive');
         seatEl.classList.remove('inactive-hidden');
         seatEl.classList.remove('gender-boy', 'gender-girl');
+        updateOverallRulePin(seatEl, null, parsedOverallRules);
         if (inactiveSeats.has(i)) {
             seatEl.classList.add('inactive');
             seatEl.classList.add('inactive-hidden');
@@ -4986,6 +5046,7 @@ function renderAssignments() {
 
         const student = currentData[i];
         if (student) {
+            updateOverallRulePin(seatEl, student, parsedOverallRules);
             const pointSummary = formatStudentPointSummary(previewPointDetails, student.id);
             if (pointSummary) {
                 seatEl.classList.add('has-adjustment-points');
@@ -5554,7 +5615,7 @@ function prepareStudentSeatConstraintsSilent(students, checkerboard, gridBounds)
         const allowedSeats = calcAllowedSeatsForStudent(student, checkerboard, gridBounds);
         if (allowedSeats.length === 0) return false;
         student.allowedSeats = allowedSeats;
-        student.skipNonPairFairness = studentSkipsNonPairFairness(student);
+        student.fairnessExemptions = getStudentFairnessExemptions(student);
         student.hasFixed = allowedSeats.length <= 1;
     }
     return true;
@@ -5667,7 +5728,7 @@ function swapEvalStudent(student, preparedById) {
     return Object.assign({}, student, {
         allowedSeats: prep.allowedSeats,
         hasFixed: prep.hasFixed,
-        skipNonPairFairness: prep.skipNonPairFairness
+        fairnessExemptions: prep.fairnessExemptions
     });
 }
 

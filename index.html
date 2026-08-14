@@ -317,16 +317,16 @@
         </div>
     </div>
 
-    <div id="preview-points-legend" class="preview-points-legend no-print" hidden><span aria-hidden="true">◆</span> 金枠の席は、今回の配置調整で優先ルールのポイントが残っている生徒です。</div>
+    <div id="preview-points-legend" class="preview-points-legend no-print" hidden>金枠の席は、今回の配置調整で優先ルールのポイントが残っている生徒です。</div>
 
     <div class="classroom-wrapper" id="classroom">
         <div class="desk-row">
             <div class="desk-row-inner" id="desk-row-inner">
-                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-min" onclick="cycleEdgeAttr('min')" title="教卓から見て左端列の属性">[廊下]</button>
+                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-min" onclick="cycleEdgeAttr('min')" title="教卓から見て左端列の属性">廊下</button>
                 <div class="desk-teacher" id="desk-class-title">
                     <span id="class-name-in-desk" class="class-name-in-desk-text"></span>
                 </div>
-                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-max" onclick="cycleEdgeAttr('max')" title="教卓から見て右端列の属性">[窓]</button>
+                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-max" onclick="cycleEdgeAttr('max')" title="教卓から見て右端列の属性">窓</button>
             </div>
         </div>
         <div class="seat-grid" id="seat-grid"></div>
@@ -564,7 +564,7 @@
                 <h2 style="margin-bottom: 5px;">座席ローテーション公平化</h2>
                 <div style="font-size: 0.8em; color: #555; margin-bottom: 10px; line-height: 1.4;">
                     直近の履歴のうち、何「段階」まで前列・後列・窓側・廊下側・過去ペアの重複をポイントに含めるかを選びます。<b>0</b>はその項目をオフです（最大<b>5</b>）。<b>過去座席</b>のみ <b>8〜15</b> で参照段数を選びます（最大<b>15</b>）。<br>
-                    ※全体ルールの<b>行・列指定</b>のみの生徒には、前列などの公平化も適用されます。<b>備考欄の@指定</b>または全体ルールの<b>席名指し</b>がある生徒には、ソフト制約は<b>過去ペアのみ</b>適用されます（その他はスキップ）。<br>
+                    ※座席・行・列の指定がある生徒は、前列・後列の重複をポイントに含めません。<b>座席指定</b>がある生徒は、過去座席の重複も参考表示のみです。過去ペアは常にポイント対象です。<br>
                     （※必須ルールは常に優先されます。競合すると配置できません）
                 </div>
                 <div class="fairness-pair-grid">

@@ -685,7 +685,6 @@ body.exception-mode-active .settings-bottom { pointer-events: none; filter: gray
 .shuffle-seed-row #shuffle-seed-help { color: #64748b; }
 .shuffle-seed-used { margin-left: auto; font-weight: bold; color: #2c3e50; font-variant-numeric: tabular-nums; }
 .preview-points-legend { width: 100%; max-width: 1100px; margin: -5px 0 10px; padding: 7px 10px; border: 1px solid #e4b94f; border-radius: 5px; background: #fff8dd; color: #5d4500; font-size: 0.82em; }
-.preview-points-legend span { color: #b78103; margin-right: 4px; }
 @media (max-width: 640px) {
     .shuffle-seed-used { margin-left: 0; width: 100%; }
 }
@@ -790,8 +789,16 @@ body.exception-mode-active .settings-bottom { pointer-events: none; filter: gray
 /* 未確定表示は枠線ではなく座席内背景で示す */
 .seat.uncommitted:not(.inactive) .seat-content { background: #dfe3e8; }
 .seat.has-adjustment-points:not(.inactive) { border-color: #c08a00 !important; box-shadow: inset 0 0 0 2px #ffe7a0; }
-.seat.has-adjustment-points:not(.inactive)::after { content: '◆'; position: absolute; top: 2px; left: 4px; z-index: 2; color: #a56f00; font-size: 0.85em; line-height: 1; transform: scaleY(-1); pointer-events: none; text-shadow: 0 1px #fff; }
-.classroom-wrapper.student-view .seat.has-adjustment-points:not(.inactive)::after { transform: scaleX(-1); }
+.overall-rule-pin {
+    position: absolute; bottom: 4px; left: 5px; z-index: 3; width: 16px; height: 16px;
+    color: #c0392b; transform: scaleY(-1); pointer-events: none;
+    filter: drop-shadow(0 1px 0 rgba(255,255,255,0.92));
+}
+.overall-rule-pin.is-row-col { color: #27823a; }
+.overall-rule-pin svg { display: block; width: 100%; height: 100%; }
+.classroom-wrapper.student-view .overall-rule-pin {
+    top: 4px; right: 5px; bottom: auto; left: auto; transform: scaleX(-1);
+}
 .seat-grid.previewing { background: #dfe3e8; }
 .seat-grid.previewing .seat.inactive-hidden {
     background: #dfe3e8 !important;
