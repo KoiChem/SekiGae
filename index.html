@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>席替えくん</title>
+<title>SekiGae</title>
 <link rel="stylesheet" href="styles.css">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
@@ -26,7 +26,7 @@
 
 <div id="checkerboard-pattern-modal" class="modal-overlay">
     <div class="modal-content" style="max-width: 720px;">
-        <h2 style="border:none; font-size:1.4em; color: #2c3e50; margin-bottom: 6px;">市松シャッフル：枠の選択</h2>
+        <h2 style="border:none; font-size:1.4em; color: #2c3e50; margin-bottom: 6px;">市松：枠の選択</h2>
         <p style="font-size:0.95em; color:#555; margin: 4px 0 14px 0;">
             左上席（= <b>a1席</b>、<span style="color:#2980b9;">教卓側の左端</span>）の性別を選んでください。
         </p>
@@ -78,7 +78,7 @@
 
 <div id="progress-modal" class="modal-overlay">
     <div class="modal-content">
-        <h2 style="border:none; font-size:1.4em; color: #3498db; margin-bottom: 5px;">AI最適化中...</h2>
+        <h2 style="border:none; font-size:1.4em; color: #3498db; margin-bottom: 5px;">配置を調整中...</h2>
         <p id="progress-text" class="progress-text-block">準備中...</p>
         <div class="progress-time-row" aria-live="polite">
             <span>探索時間</span>
@@ -232,7 +232,8 @@
         <h2 style="border:none; font-size:1.15em; color: #2c3e50; margin-bottom: 8px;">座席追跡</h2>
         <div class="seat-track-head">
             <div><b>氏名:</b> <span id="seat-track-name"></span></div>
-            <div class="seat-track-constraints-title"><b>制約ルール</b></div>
+            <div id="seat-track-points" class="seat-track-points" hidden></div>
+            <div class="seat-track-constraints-title"><b>必須ルール</b></div>
             <div id="seat-track-constraints" class="seat-track-constraints"></div>
         </div>
         <div class="seat-track-grid-wrap">
@@ -277,6 +278,10 @@
 <div class="tab-header no-print">
     <button class="tab-btn active" onclick="switchTab('tab-main', event)">座席表・設定</button>
     <button class="tab-btn" onclick="switchTab('tab-students', event)">名簿管理</button>
+    <div class="tab-utility-actions" aria-label="表示と印刷">
+        <button class="btn btn-outline tab-utility-btn" id="btn-main-view-toggle" onclick="toggleView()">視点: 教員側</button>
+        <button class="btn btn-outline tab-utility-btn" onclick="togglePrintMode()">印刷プレビュー</button>
+    </div>
 </div>
 
 <div id="tab-main" class="tab-content active">
@@ -294,33 +299,25 @@
                     <span style="font-size: 0.85em; color: #7f8c8d;">有効座席:</span> <span id="counter-seats" style="font-size: 1.1em;">42</span> 席
                 </div>
             </div>
-            <div class="flex-row">
-                <button class="btn btn-outline" onclick="toggleView()">視点切替</button>
-                <button class="btn btn-outline" onclick="togglePrintMode()">印刷プレビュー</button>
-            </div>
-        </div>
-        
-        <div class="shuffle-seed-row">
-            <label for="shuffle-seed-input">再現用 seed（任意）</label>
-            <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
-            <span id="shuffle-seed-help">seedは探索順の手がかりです（約20秒の品質優先探索のため、端末差で配置が変わることがあります）</span>
-            <span class="shuffle-seed-used">今回使用: <output id="shuffle-seed-used">—</output></span>
         </div>
 
         <div class="action-bar-bottom">
             <div class="flex-row" style="gap: 10px;">
                 <button class="btn btn-outline" style="padding: 10px 15px;" onclick="resetPlacement()">配置リセット</button>
-                <button class="btn" style="padding: 10px 20px; font-size: 1.1em;" onclick="openCheckerboardPatternModal()">市松シャッフル</button>
+                <button class="btn" style="padding: 10px 20px; font-size: 1.1em;" onclick="openCheckerboardPatternModal()">市松</button>
                 <button class="btn" style="padding: 10px 20px; font-size: 1.1em;" onclick="prepareShuffle(false)">シャッフル</button>
                 <button class="btn" style="padding: 10px 20px; font-size: 1.1em;" onclick="openSortModal()">整列</button>
             </div>
             <div class="flex-row" style="gap: 10px;">
                 <button class="btn btn-outline" id="btn-show-log" style="display:none; padding: 10px 15px;" onclick="showLogModal()">詳細ログ</button>
+                <button class="btn btn-outline" id="btn-undo-manual-swap" style="display:none; padding: 10px 15px;" onclick="undoLastManualSwap()">手動入替を戻す</button>
                 <button class="btn btn-outline" id="btn-cancel-preview" style="display:none; padding: 10px 15px;" onclick="cancelPreview()">キャンセル</button>
                 <button class="btn" id="btn-commit" style="padding: 10px 25px; font-size: 1.2em; display:none;" onclick="commitSeats()">座席を確定</button>
             </div>
         </div>
     </div>
+
+    <div id="preview-points-legend" class="preview-points-legend no-print" hidden><span aria-hidden="true">◆</span> 金枠の席は、今回の配置調整で優先ルールのポイントが残っている生徒です。</div>
 
     <div class="classroom-wrapper" id="classroom">
         <div class="desk-row">
@@ -357,6 +354,7 @@
             <input type="hidden" id="layout-rules" value="">
             
             <h3 style="margin-top:8px;">色番号設定 (1〜6)</h3>
+            <p class="color-palette-help">印刷時も読みやすい、彩度を抑えた24色（8列×3行）です。黒〜グレーは4色から選べます。</p>
             <div id="color-palette-group" class="color-palette-group">
                 <div class="color-palette-row">
                     <span class="color-palette-label">1</span>
@@ -391,24 +389,24 @@
             </div>
             <div id="color-palette-panel" class="color-palette-panel" style="display:none;"></div>
             <div class="color-picker-group color-picker-group-hidden" aria-hidden="true">
-                <label for="color-1" class="color-item">1:<input type="color" id="color-1" value="#000000" onchange="updateColors()"></label>
-                <label for="color-2" class="color-item">2:<input type="color" id="color-2" value="#666666" onchange="updateColors()"></label>
-                <label for="color-3" class="color-item">3:<input type="color" id="color-3" value="#000080" onchange="updateColors()"></label>
-                <label for="color-4" class="color-item">4:<input type="color" id="color-4" value="#0000ff" onchange="updateColors()"></label>
-                <label for="color-5" class="color-item">5:<input type="color" id="color-5" value="#008000" onchange="updateColors()"></label>
-                <label for="color-6" class="color-item">6:<input type="color" id="color-6" value="#ff0000" onchange="updateColors()"></label>
+                <label for="color-1" class="color-item">1:<input type="color" id="color-1" value="#1f2937" onchange="updateColors()"></label>
+                <label for="color-2" class="color-item">2:<input type="color" id="color-2" value="#4b5563" onchange="updateColors()"></label>
+                <label for="color-3" class="color-item">3:<input type="color" id="color-3" value="#3f5f8a" onchange="updateColors()"></label>
+                <label for="color-4" class="color-item">4:<input type="color" id="color-4" value="#3f756f" onchange="updateColors()"></label>
+                <label for="color-5" class="color-item">5:<input type="color" id="color-5" value="#8a5c3f" onchange="updateColors()"></label>
+                <label for="color-6" class="color-item">6:<input type="color" id="color-6" value="#705f88" onchange="updateColors()"></label>
             </div>
             <hr style="border:none; border-top:1px dashed #ccc; margin: 15px 0 10px 0;">
             <div class="flex-row" style="justify-content: space-between; margin-bottom: 5px;">
-                <h3 style="margin:0; font-size: 0.95em;">座席色指定</h3>
+                <h3 style="margin:0; font-size: 0.95em;">男女別の枠線（任意）</h3>
                 <button id="btn-gender-border" class="btn btn-outline" style="padding: 4px 15px; font-size: 0.85em; font-weight:bold;" onclick="toggleGenderBorder()">OFF</button>
             </div>
             <div id="gender-border-settings" style="display: none; background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 0.85em;">
                 <div class="flex-row" style="margin-bottom: 8px;">
-                    <label style="font-weight:bold; color:#2c3e50;">男子の色(1-6): 
+                    <label style="font-weight:bold; color:#2c3e50;">男の色(1-6):
                         <input type="number" id="gb-boy-color" min="1" max="6" value="6" style="width: 45px; margin-right:15px;" onchange="saveAndRender()">
                     </label>
-                    <label style="font-weight:bold; color:#2c3e50;">女子の色(1-6): 
+                    <label style="font-weight:bold; color:#2c3e50;">女の色(1-6):
                         <input type="number" id="gb-girl-color" min="1" max="6" value="5" style="width: 45px;" onchange="saveAndRender()">
                     </label>
                 </div>
@@ -427,7 +425,8 @@
 
         <div class="panel">
             <h2>データ・履歴管理</h2>
-            <label for="history-select" style="font-size:0.8em; font-weight:bold;">盤面に過去の履歴を復元</label>
+            <p class="local-data-note">データはこのパソコンのブラウザ内にのみ保存されます。定期的にバックアップ保存してください。</p>
+            <label for="history-select" style="font-size:0.8em; font-weight:bold;">過去の配置を盤面に復元</label>
             <div class="flex-row" style="margin-bottom: 6px;">
                 <select id="history-select" style="flex-grow:1;"></select>
                 <button class="btn btn-danger" style="padding: 8px 10px;" onclick="deleteSelectedHistory()" title="選択した履歴を削除">削除</button>
@@ -437,16 +436,23 @@
                 <button class="btn btn-outline" onclick="saveHistoryMemo()">メモ保存</button>
             </div>
             <div class="flex-row" style="margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="exportHistoryLastTwoDigitsToClipboard()" title="履歴を選んだときはその配置。未選択時は現在の盤面（確定／プレビュー）。教員視点固定（教卓が下）で、7x6 の座席表形式（1席=1セル）でコピー">楽席くん用番号コピー</button>
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して履歴に保存">Excelからインポート</button>
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="exportHistoryLastTwoDigitsToClipboard()" title="履歴を選んだときはその配置。未選択時は現在の盤面（確定／プレビュー）。教員視点固定（教卓が下）で、7×6 の座席表形式（1席=1セル）でコピー">外部座席表用・番号コピー</button>
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して、確認後に履歴へ保存します">Excelの座席表を取り込む</button>
             </div>
             <button class="btn btn-danger" style="margin-top:5px; width:100%; font-size:0.85em;" onclick="clearAllHistories()">クラス履歴リセット</button>
             
             <hr style="border:none; border-top:1px solid #ddd; margin: 10px 0;">
             <button class="btn btn-outline" style="width:100%; font-size:0.85em; margin-bottom:5px;" onclick="openExportBackupModal()">バックアップ保存</button>
+            <p id="backup-status" class="backup-status">最終バックアップ: —</p>
             <div class="flex-row">
                 <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
                 <button type="button" class="btn btn-outline" style="font-size:0.85em; flex:1;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
+            </div>
+            <div class="shuffle-seed-row">
+                <label for="shuffle-seed-input">再現用seed（任意）</label>
+                <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
+                <span id="shuffle-seed-help">探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。</span>
+                <span class="shuffle-seed-used">今回使用: <output id="shuffle-seed-used">—</output></span>
             </div>
         </div>
     </div>
@@ -471,7 +477,7 @@
                         <button class="btn btn-danger" onclick="deleteCurrentClass()">クラス削除</button>
                     </div>
                 </div>
-                <textarea id="import-tsv" class="import-area" placeholder="Excelから「番号 / 氏名 / かな / 性別(男・女または m・f) / 属性1 / 属性2 / 備考」の7列をコピーして貼り付け"></textarea>
+                <textarea id="import-tsv" class="import-area" placeholder="Excelから「番号 / 氏名 / かな / 性別（男・女・空欄=指定なし） / 属性1 / 属性2 / 備考」の7列をコピーして貼り付け"></textarea>
                 <button class="btn btn-outline" style="max-width: 200px;" onclick="applyTSVToTable()">表に反映</button>
             </div>
 
@@ -494,7 +500,7 @@
 
         <div style="display:flex; flex-direction:column; gap: 15px;">
             <div class="panel">
-                <h2>全体ルール設定（絶対制約）</h2>
+                <h2>全体ルール設定（必須ルール）</h2>
                 <textarea id="overall-rules" style="height: 90px; width:100%;" placeholder="例: @25(1,4,5) / @1A(a1,b5) / NG(23xx,23yy)"></textarea>
                 <div style="font-size:0.8em; color:#555; margin-top:5px; line-height:1.4;">
                     <b>【設定例】 (@番号prefix(...))　prefix は英数字（例: 25、1A、3F）</b><br>
@@ -503,14 +509,14 @@
                     ・<code>@25(a1,b5)</code> (25始まりをa1/b5席のどちらか)<br>
                     ・<code>@1A(a1,b5)</code> (1Aで始まる番号をa1/b5のどちらか等)<br>
                     ・<code>NG(23xx,23yy)</code> (23xxと23yyを8近傍で隣接禁止)<br>
-                    ※備考欄（@指定）・全体ルール・市松はすべて絶対制約です。競合時は配置不能エラーになります。<br>
-                    ※机ペア相手（a-b / c-d / e-f）の重複回避は、最適化時のソフト制約で制御します。
+                    ※備考欄（@指定）・全体ルール・市松はすべて必須ルールです。競合時は配置できません。<br>
+                    ※机ペア相手（a-b / c-d / e-f）の重複回避は、配置調整時の優先ルールで扱います。
                 </div>
             </div>
 
             <div class="panel">
-                <h2 style="margin-bottom: 6px;">ソフト制約スコア（優先ルール）</h2>
-                <p style="font-size: 0.8em; color: #555; margin: 0 0 8px 0; line-height: 1.45;">AI最適化で使う「違反コスト」の基準点と、履歴が1段古くなるごとの減算幅です。最終配置は、まず一人に集中する不利益を抑え、次に不利益の分布、最後に合計点を比較します。数値を変えると自動で保存されます。</p>
+                <h2 style="margin-bottom: 6px;">優先ルールのポイント設定</h2>
+                <p style="font-size: 0.8em; color: #555; margin: 0 0 8px 0; line-height: 1.45;">配置調整で使うポイントの基準値と、履歴が1段古くなるごとの減算幅です。最終配置は、まず一人にポイントが集中しないこと、次に分布、最後に総合ポイントの順で比較します。数値を変えると自動で保存されます。</p>
                 <table class="soft-score-table">
                     <thead>
                         <tr><th>項目</th><th>基準点</th><th>1段階の減算</th></tr>
@@ -557,13 +563,13 @@
             <div class="panel fairness-panel-compact" style="background: #fff3e0; border: 2px solid #e67e22; margin-bottom: 0;">
                 <h2 style="margin-bottom: 5px;">座席ローテーション公平化</h2>
                 <div style="font-size: 0.8em; color: #555; margin-bottom: 10px; line-height: 1.4;">
-                    直近の履歴のうち、何「段階」まで前列・後列・窓側・廊下側・過去ペアの重複をペナルティに含めるかを選びます。<b>0</b>はその項目をオフです（最大<b>5</b>）。<b>過去座席</b>のみ <b>8〜15</b> で参照段数を選びます（最大<b>15</b>）。<br>
+                    直近の履歴のうち、何「段階」まで前列・後列・窓側・廊下側・過去ペアの重複をポイントに含めるかを選びます。<b>0</b>はその項目をオフです（最大<b>5</b>）。<b>過去座席</b>のみ <b>8〜15</b> で参照段数を選びます（最大<b>15</b>）。<br>
                     ※全体ルールの<b>行・列指定</b>のみの生徒には、前列などの公平化も適用されます。<b>備考欄の@指定</b>または全体ルールの<b>席名指し</b>がある生徒には、ソフト制約は<b>過去ペアのみ</b>適用されます（その他はスキップ）。<br>
-                    （※絶対制約は常に優先されます。競合すると配置不能になります）
+                    （※必須ルールは常に優先されます。競合すると配置できません）
                 </div>
                 <div class="fairness-pair-grid">
                     <div class="fairness-row">
-                        <span class="fairness-label">前後：２列ずつ</span>
+                        <span class="fairness-label">前・後ろ：2行ずつ</span>
                         <div class="fairness-btn-group" id="fair-btns-fb" role="group">
                             <button type="button" class="fairness-btn" data-value="0" onclick="setFairnessFromButton('fb', 0)">0</button>
                             <button type="button" class="fairness-btn" data-value="1" onclick="setFairnessFromButton('fb', 1)">1</button>
@@ -623,7 +629,7 @@
                     </div>
                 </div>
                 <div class="fairness-row fairness-row-seat-near-fair">
-                    <span class="fairness-label">過去近傍8マス</span>
+                    <span class="fairness-label">過去座席の周囲8席</span>
                     <div class="fairness-btn-group fairness-btn-group-seat-near" id="fair-btns-seat-near" role="group">
                         <button type="button" class="fairness-btn" data-value="0" onclick="setFairnessFromButton('seatNear', 0)">0</button>
                         <button type="button" class="fairness-btn" data-value="1" onclick="setFairnessFromButton('seatNear', 1)">1</button>
@@ -639,22 +645,21 @@
             </div>
 
             <div class="cheat-sheet panel" style="background: #eef2f5; border: 2px solid var(--secondary); margin-bottom: 0;">
-                <h3 style="margin-top:0; border-bottom: 1px solid #ccc; padding-bottom:5px;">備考欄の記入例（絶対制約）</h3>
+                <h3 style="margin-top:0; border-bottom: 1px solid #ccc; padding-bottom:5px;">備考欄の記入例（必須ルール）</h3>
                 <div style="font-size:0.85em; margin-bottom:8px; color:#c0392b;"><b>※記法は <code>@(...)</code> を使用してください。混在記法はエラーになります。</b></div>
                 <b>座席指定</b>: <code>@(a1,b5)</code> (a1席かb5席に配置)<br>
                 <b>列指定</b>: <code>@(a,c,e)</code> (a/c/e列のどこかに配置)<br>
                 <b>行指定</b>: <code>@(1,4,6)</code> (1/4/6行のどこかに配置)<br>
                 <div style="margin-top:8px; padding:8px; background:#fff; border:1px dashed #ccc; border-radius: 4px;">
                     <b style="color:#2980b9;">注意:</b><br>
-                    <span style="color:#555;">備考欄（@指定）・全体ルール・市松は絶対制約です。NGは全体ルールのみ有効です。机ペア相手の重複はソフト制約として最小化されます。</span>
+                    <span style="color:#555;">備考欄（@指定）・全体ルール・市松は必須ルールです。NGは全体ルールのみ有効です。机ペア相手の重複は優先ルールとして少なくなります。</span>
                 </div>
             </div>
             
-            <div style="font-size:0.75em; color:#666; padding: 10px; background: #fff; border-radius: 6px; border: 1px solid #ddd;">
-                <b>AI最適化アルゴリズムについて</b><br>
-                NGペア（8近傍隣接禁止）は探索段階で除外する絶対制約です。<br>
-                そのうえで、前列・後列・過去ペア・窓側／廊下側・過去座席の違反コストを生徒ごとに集計します。最終配置は、最大個人負担→個人負担の分布→合計点の順で比較します（前列だけを他項目より絶対優先する方式ではありません）。初期解は20通り作り、品質上位3通りと配置が異なる3通りを焼きなましへ進めます。ペナルティ0なら終了し、残る場合は6経路を短く再加熱して上位2通りと多様な1通りへ絞り、停滞後は残る違反の当事者を優先して局所修復します。
-            </div>
+            <details class="technical-note">
+                <summary>配置調整のしくみ（技術情報）</summary>
+                <p>NGペア（8近傍への隣接禁止）は、候補から除外する必須ルールです。そのうえで、前列・後列・過去ペア・窓側／廊下側・過去座席のポイントを生徒ごとに集計します。最終配置は、最大個人ポイント→個人ポイントの分布→総合ポイントの順で比較します。初期候補を複数作成して調整を重ね、総合ポイントが0なら早期終了します。</p>
+            </details>
         </div>
     </div>
 </div>

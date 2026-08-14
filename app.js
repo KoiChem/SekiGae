@@ -205,27 +205,12 @@ const SOFT_SCORE_FIELDS = [
     'seatBase', 'seatStep'
 ];
 const COLOR_PALETTE_PRESET = [
-    // Black / Gray
-    '#2C3E50', '#4A4E69', '#6C7A89', '#7F8C8D', '#95A5A6',
-    // Navy
-    '#1F456E', '#283747', '#34495E', '#21618C', '#1A5276',
-    // Blue
-    '#5499C7', '#5DADE2', '#4A90E2', '#7FB3D5', '#5C88DA',
-    // Teal / Turquoise
-    '#0E6655', '#117864', '#16A085', '#1ABC9C', '#48C9B0',
-    // Green
-    '#52BE80', '#45B39D', '#609966', '#7DCEA0', '#58D68D',
-    // Red
-    '#CD5C5C', '#D9534F', '#C0392B', '#CB4335', '#A93226',
-    // Purple
-    '#9B59B6', '#8E44AD', '#AF7AC5', '#7D3C98', '#884EA0',
-    // Brown
-    '#8D6E63', '#A1887F', '#873600', '#A04000', '#6E2C00',
-    // Pink
-    '#D98880', '#F1948A', '#C27BA0', '#D288A3', '#E56B6F',
-    // Orange
-    '#E67E22', '#EB984E', '#CA6F1E', '#D35400', '#E07A5F'
+    // 8 columns × 3 rows. All colors retain readable contrast on white paper.
+    '#1F2937', '#374151', '#4B5563', '#6B7280', '#3F5F8A', '#456F8A', '#3F756F', '#4F7658',
+    '#68723E', '#7A682E', '#8A5C3F', '#965C50', '#955A63', '#8F5E70', '#705F88', '#59658C',
+    '#526F92', '#4C778A', '#487B71', '#5F784C', '#7A733C', '#8B674A', '#9A5E4C', '#865E7F'
 ];
+const DEFAULT_SEAT_COLORS = ['#1F2937', '#4B5563', '#3F5F8A', '#3F756F', '#8A5C3F', '#705F88'];
 
 /** 履歴の深さ depth (0=直前回, 1=前々回, 2=3回前, ...) を日本語ラベルへ */
 function depthLabel(d) {
@@ -374,7 +359,7 @@ function initFormArrowNavigation() {
     const historySelect = document.getElementById('history-select');
     if (historySelect) {
         historySelect.addEventListener('change', () => {
-            applyHistorySelectionToBoard();
+            if (!requestHistorySelectionToBoard()) return;
             syncHistoryMemoInput();
             updateDeskTitleDisplay();
         });
@@ -523,7 +508,7 @@ function resetSoftScoresToDefaults() {
     resetSoftScoresStateToDefaults();
     writeSoftScoresToInputs();
     saveCurrentClassData();
-    showAlert('ソフト制約スコアを初期値に戻しました。', 'success');
+    showAlert('優先ルールのポイント設定を初期値に戻しました。', 'success');
 }
 
 function coerceFairSeat(v) {
@@ -889,6 +874,7 @@ let lastShuffleLog = null;
 /** 入力欄は任意指定、lastUsed は直近の実行seed。 */
 let shuffleSeedInput = '';
 let lastUsedShuffleSeed = null;
+let lastBackupAt = '';
 /** 実行中のseed情報と、プレビューを確定したとき履歴へ渡す情報。 */
 let activeShuffleRun = null;
 let pendingHistoryShuffleMeta = null;
@@ -921,6 +907,12 @@ function syncShuffleSeedControlsFromState() {
     if (used) used.textContent = lastUsedShuffleSeed == null ? '—' : String(lastUsedShuffleSeed);
 }
 
+function refreshBackupStatus() {
+    const status = document.getElementById('backup-status');
+    if (!status) return;
+    status.textContent = lastBackupAt ? `最終バックアップ: ${lastBackupAt}` : '最終バックアップ: まだ保存していません';
+}
+
 function resolveShuffleRunFromInput() {
     const input = getShuffleSeedInputElement();
     shuffleSeedInput = input ? String(input.value || '').trim() : shuffleSeedInput;
@@ -946,6 +938,11 @@ function clearPendingHistoryShuffleMeta() {
 
 function markPendingShuffleAsManuallyModified() {
     if (pendingHistoryShuffleMeta) pendingHistoryShuffleMeta.manuallyModified = true;
+}
+
+function updateMainViewToggleUi() {
+    const btn = document.getElementById('btn-main-view-toggle');
+    if (btn) btn.textContent = isStudentView ? '視点: 生徒側' : '視点: 教員側';
 }
 
 // 盤面のDOM参照を統一し、同じquerySelector文字列の重複を減らす。
@@ -1038,6 +1035,24 @@ function buildSeatTrackConstraintsHtml(student, ngPeerIds) {
     return html;
 }
 
+function getPreviewPointDetails() {
+    if (!previewAssignment || !pendingHistoryShuffleMeta) return null;
+    const context = buildManualSwapEvalContext();
+    return context ? context.evaluateAssignment(previewAssignment) : null;
+}
+
+function formatStudentPointSummary(details, studentId) {
+    if (!details) return '';
+    const total = Number((details.studentPenaltyById || {})[studentId]) || 0;
+    if (total <= 0) return '';
+    const labels = { front: '前列', back: '後列', pair: '過去ペア', window: '窓側', corridor: '廊下側', seat: '過去座席' };
+    const parts = Object.entries((details.studentPenaltyBreakdownById || {})[studentId] || {})
+        .filter(([, pts]) => Number(pts) > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([key, pts]) => `${labels[key] || key} ${formatPenaltyPoints(pts)}点`);
+    return `優先ルールのポイント: ${formatPenaltyPoints(total)}点${parts.length ? `（${parts.join('、')}）` : ''}`;
+}
+
 function openSeatTrackModal(seatIdx) {
     const currentAssign = previewAssignment || seatAssignment;
     const student = currentAssign[seatIdx];
@@ -1048,6 +1063,7 @@ function openSeatTrackModal(seatIdx) {
     const modal = document.getElementById('seat-track-modal');
     const nameEl = document.getElementById('seat-track-name');
     const constraintsEl = document.getElementById('seat-track-constraints');
+    const pointsEl = document.getElementById('seat-track-points');
     const pairListEl = document.getElementById('seat-track-pairs');
     const gridEl = document.getElementById('seat-track-grid');
     const stackEl = document.getElementById('seat-track-main-stack');
@@ -1064,6 +1080,11 @@ function openSeatTrackModal(seatIdx) {
     const ngMap = buildNgPairsMap(currentStudents, rulesText);
     const ngPeerIds = ngMap[student.id] ? Array.from(ngMap[student.id]) : [];
     constraintsEl.innerHTML = buildSeatTrackConstraintsHtml(student, ngPeerIds);
+    const pointSummary = formatStudentPointSummary(getPreviewPointDetails(), student.id);
+    if (pointsEl) {
+        pointsEl.hidden = !pointSummary;
+        pointsEl.textContent = pointSummary;
+    }
 
     const pairRows = [];
     pairRows.push({ label: '今回', partner: findPairPartnerName(currentAssign, student.id) });
@@ -1152,14 +1173,26 @@ async function loadSampleBackup() {
     }
     Object.entries(backup).forEach(([key, value]) => {
         const sampleKey = String(key).replace(/^Sekigae(Kun|App)_v\d+_/, PREFIX);
-        localStorage.setItem(sampleKey, String(value));
+        let sampleValue = String(value);
+        // サンプルは現行の見た目を常に示す。名簿・履歴はそのまま、色と任意の男女枠線のみ現行既定値へそろえる。
+        if (/^Sekigae(Kun|App)_v\d+_data_/.test(String(key))) {
+            try {
+                const classData = JSON.parse(sampleValue);
+                classData.colors = Object.fromEntries(DEFAULT_SEAT_COLORS.map((color, index) => [`c${index + 1}`, color]));
+                classData.genderBorderData = { active: false, boy: '3', girl: '6', style: 'solid' };
+                sampleValue = JSON.stringify(classData);
+            } catch (error) {
+                console.warn('サンプル表示設定の更新をスキップしました。', error);
+            }
+        }
+        localStorage.setItem(sampleKey, sampleValue);
     });
 }
 
 function showSampleWelcomeModal() {
     if (!SAMPLE_MODE) return;
     document.body.classList.add('sample-mode');
-    document.title = '席替えくん サンプル版';
+    document.title = 'SekiGae サンプル版';
     const banner = document.getElementById('sample-mode-banner');
     if (banner) banner.hidden = false;
     const modal = document.getElementById('sample-mode-modal');
@@ -1980,7 +2013,7 @@ function switchTab(tabId, ev, navOpts) {
             || (typeof window !== 'undefined' && window.event && window.event.currentTarget)
             || Array.from(document.querySelectorAll('.tab-btn')).find(btn => (btn.getAttribute('onclick') || '').includes(`'${tabId}'`));
         if (trigger && trigger.classList) trigger.classList.add('active');
-        if (tabId === 'tab-main') { updateCounters(); if (currentStudents.length > 0) renderAssignments(); }
+        if (tabId === 'tab-main') { updateCounters(); updateMainViewToggleUi(); if (currentStudents.length > 0) renderAssignments(); }
     };
     if (!navOpts.skipRosterDirtyPrompt && tabId === 'tab-main') {
         const studentsTab = document.getElementById('tab-students');
@@ -2106,6 +2139,14 @@ function resetClassScopedSettingsUI() {
     softSeatBase = DEFAULT_SOFT_SEAT_BASE; softSeatStep = DEFAULT_SOFT_SEAT_STEP;
     setEdgeAttrs(DEFAULT_EDGE_MIN, DEFAULT_EDGE_MAX);
     syncClassScopedControlsFromGlobals();
+    DEFAULT_SEAT_COLORS.forEach((color, idx) => {
+        const input = document.getElementById(`color-${idx + 1}`);
+        if (input) input.value = color;
+    });
+    const genderButton = document.getElementById('btn-gender-border');
+    const genderPanel = document.getElementById('gender-border-settings');
+    if (genderButton) { genderButton.classList.remove('btn-success'); genderButton.classList.add('btn-outline'); genderButton.textContent = 'OFF'; }
+    if (genderPanel) genderPanel.style.display = 'none';
 }
 
 function deleteCurrentClass() {
@@ -2140,6 +2181,7 @@ function initGrid() {
 function toggleView() {
     isStudentView = !isStudentView;
     document.getElementById('classroom').classList.toggle('student-view');
+    updateMainViewToggleUi();
     renderAssignments();
     scheduleFitDeskClassName();
 }
@@ -2604,6 +2646,7 @@ function updateColors() {
 }
 
 function resetPlacement() {
+    if (!confirm('現在の配置を空にします。未確定の配置がある場合は破棄されます。よろしいですか？')) return;
     if (previewAssignment) {
         previewAssignment = null;
         pendingHistoryMemoOnCommit = null;
@@ -2615,6 +2658,7 @@ function resetPlacement() {
         }
         setActionButtons(false, false);
     }
+    clearManualSwapUndoStack();
     seatAssignment = new Array(TOTAL_SEATS).fill(null);
     renderAssignments(); showAlert("配置をクリアしました。（空席設定は保持されています）", "info");
 }
@@ -3253,20 +3297,22 @@ function handleShuffleUnexpectedError(error) {
 }
 function finalizeShuffleSuccess(bestAssign, finalScore) {
     previewAssignment = bestAssign;
+    clearManualSwapUndoStack();
     if (activeShuffleRun) {
         pendingHistoryShuffleMeta = {
             seed: activeShuffleRun.seed,
             seedSource: activeShuffleRun.seedSource,
             algorithmVersion: activeShuffleRun.algorithmVersion,
+            isCheckerboard: activeShuffleRun.isCheckerboard === true,
             manuallyModified: false
         };
     }
     activeShuffleRun = null;
     setActionButtons(true, true);
     if (finalScore > 0) {
-        showAlert(`シャッフル完了。\n絶対制約を守ったうえで、個人への不利益集中を優先して抑えました。詳細は「詳細ログ」を確認してください。`, "warning");
+        showAlert(`シャッフル完了。\n必須ルールを守ったうえで、個人ポイントの集中を優先して抑えました。金枠の座席と「詳細ログ」で内訳を確認できます。`, "warning");
     } else {
-        showAlert(`完璧な配置が完了しました。（絶対制約順守 + ペナルティ0）`, "success");
+        showAlert(`配置が完了しました。（必須ルールを満たし、優先ルールのポイントは0です）`, "success");
     }
     isCalculating = false;
     isShuffleCancelled = false;
@@ -3488,20 +3534,24 @@ function createSoftConstraintDetails() {
     return {
         frontDupRows: [], backDupRows: [], windowDupRows: [], corridorDupRows: [], pastPairStrs: [], pastSeatStrs: [],
         scoreFront: 0, scorePair: 0, scoreBack: 0, scoreWindow: 0, scoreCorridor: 0, scoreSeat: 0,
-        studentPenaltyById: Object.create(null), maxIndividualPenalty: 0, penalizedStudentCount: 0
+        studentPenaltyById: Object.create(null), studentPenaltyBreakdownById: Object.create(null), maxIndividualPenalty: 0, penalizedStudentCount: 0
     };
 }
 function addDupRow(details, key, studentId, pts, scored, displayText) {
     details[key].push({ studentId: studentId, sortScore: pts, scored: scored, displayText: displayText });
 }
 /** 個人に帰属する不利益。机ペアのような共有違反は呼び出し側で分配する。 */
-function addStudentPenalty(details, studentId, pts) {
+function addStudentPenalty(details, studentId, pts, category) {
     if (!studentId || !Number.isFinite(pts) || pts <= 0) return;
     const previous = details.studentPenaltyById[studentId] || 0;
     const next = previous + pts;
     details.studentPenaltyById[studentId] = next;
     if (previous === 0) details.penalizedStudentCount++;
     if (next > details.maxIndividualPenalty) details.maxIndividualPenalty = next;
+    if (category) {
+        const breakdown = details.studentPenaltyBreakdownById[studentId] || (details.studentPenaltyBreakdownById[studentId] = Object.create(null));
+        breakdown[category] = (breakdown[category] || 0) + pts;
+    }
 }
 function getSortedIndividualPenaltyVector(details) {
     if (details._individualPenaltyVector) return details._individualPenaltyVector;
@@ -3539,7 +3589,7 @@ function formatPenaltyPoints(value) {
     return Number.isInteger(num) ? String(num) : String(Math.round(num * 10) / 10);
 }
 function describeFairnessEvaluation(details) {
-    return `最大個人負担 ${formatPenaltyPoints(details.maxIndividualPenalty)}点 ／ 不利益を受けた生徒 ${Number(details.penalizedStudentCount) || 0}人 ／ 合計 ${formatPenaltyPoints(details.totalScore)}点`;
+    return `最大個人ポイント ${formatPenaltyPoints(details.maxIndividualPenalty)}点 ／ ポイントがある生徒 ${Number(details.penalizedStudentCount) || 0}人 ／ 総合 ${formatPenaltyPoints(details.totalScore)}点`;
 }
 function buildIndividualPenaltyRows(assignment, details) {
     const byId = details.studentPenaltyById || {};
@@ -3549,7 +3599,7 @@ function buildIndividualPenaltyRows(assignment, details) {
             studentId: student.id,
             sortScore: byId[student.id] || 0,
             scored: (byId[student.id] || 0) > 0,
-            displayText: `[${student.id} ${student.name}] 合計 +${formatPenaltyPoints(byId[student.id] || 0)}点`
+            displayText: `[${student.id} ${student.name}] ポイント合計 +${formatPenaltyPoints(byId[student.id] || 0)}点`
         }))
         .filter(row => row.scored)
         .sort((a, b) => b.sortScore - a.sortScore || String(a.studentId).localeCompare(String(b.studentId), undefined, { numeric: true }));
@@ -3579,7 +3629,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (scored) {
                 totalScoreRef.value += pts;
                 details[scoreKey] += pts;
-                addStudentPenalty(details, stu.id, pts);
+                addStudentPenalty(details, stu.id, pts, scoreKey === 'scoreWindow' ? 'window' : 'corridor');
             }
             const dl = depthLabel(d);
             const displayText = scored
@@ -3597,7 +3647,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (scored) {
                 totalScoreRef.value += pts;
                 details.scoreFront += pts;
-                addStudentPenalty(details, student.id, pts);
+                addStudentPenalty(details, student.id, pts, 'front');
             }
             const dl = depthLabel(d);
             const displayText = scored
@@ -3615,7 +3665,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (scored) {
                 totalScoreRef.value += pts;
                 details.scoreBack += pts;
-                addStudentPenalty(details, student.id, pts);
+                addStudentPenalty(details, student.id, pts, 'back');
             }
             const dl = depthLabel(d);
             const displayText = scored
@@ -3632,7 +3682,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (h.seatIdx === seatIndex) {
                 totalScoreRef.value += basePts;
                 details.scoreSeat += basePts;
-                addStudentPenalty(details, student.id, basePts);
+                addStudentPenalty(details, student.id, basePts, 'seat');
                 details.pastSeatStrs.push(`[${student.id} ${student.name}] 同じ座席（${depthLabel(h.depth)} +${basePts}点）`);
                 return;
             }
@@ -3642,7 +3692,7 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             if (nearPts <= 0) return;
             totalScoreRef.value += nearPts;
             details.scoreSeat += nearPts;
-            addStudentPenalty(details, student.id, nearPts);
+            addStudentPenalty(details, student.id, nearPts, 'seat');
             details.pastSeatStrs.push(`[${student.id} ${student.name}] 過去座席の近傍8マス（${depthLabel(h.depth)} +${nearPts}点）`);
         });
     };
@@ -3655,8 +3705,8 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
             totalScoreRef.value += pts;
             details.scorePair += pts;
             // 机ペア重複は二人に等しく帰属させ、個人負担の合計は従来の全体スコアと一致させる。
-            addStudentPenalty(details, student.id, pts / 2);
-            addStudentPenalty(details, partner.id, pts / 2);
+            addStudentPenalty(details, student.id, pts / 2, 'pair');
+            addStudentPenalty(details, partner.id, pts / 2, 'pair');
             details.pastPairStrs.push(`該当ペア：[${student.id} ${student.name}] ＆ [${partner.id} ${partner.name}]（${depthLabel(h.depth)} +${pts}点）`);
         });
     };
@@ -3704,8 +3754,8 @@ function analyzeSoftConstraintsWithContext(assignment, context) {
 }
 function formatConstraintProgressHtml(details, hasWindowEdge, hasCorridorEdge) {
     const rows = [
-        ['最大個人負担', formatPenaltyPoints(details.maxIndividualPenalty)],
-        ['不利益を受けた生徒', details.penalizedStudentCount || 0],
+        ['最大個人ポイント', formatPenaltyPoints(details.maxIndividualPenalty)],
+        ['ポイントがある生徒', details.penalizedStudentCount || 0],
         ['前列', details.scoreFront],
         ['後列', details.scoreBack],
         ['過去ペア', details.scorePair]
@@ -4235,7 +4285,7 @@ async function runPhaseETargetedRepair(bestAssign, bestDetails, safetyContext, r
         }
         repairLoop++;
         if (repairLoop % SEEDED_SEARCH_BUDGETS.yieldEveryProposals === 0) {
-            showProgressModal({ phase: '違反当事者を局所修復中', score: finalScore }, safetyContext, formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge));
+            showProgressModal({ phase: 'ポイントが残る配置を調整中', score: finalScore }, safetyContext, formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge));
             await yieldToBrowser();
         }
     }
@@ -4260,7 +4310,7 @@ function buildProgressMainInner(textOrOpts) {
             stats += `<div class="progress-stat"><span class="progress-stat-label">試行スワップ</span><div class="progress-stat-value-line"><span class="progress-stat-value">${escapeHtml(trialsStr)}</span><span class="progress-stat-unit">回</span></div></div>`;
         }
         if (textOrOpts.score != null) {
-            stats += `<div class="progress-stat"><span class="progress-stat-label">合計ペナルティ</span><div class="progress-stat-value-line"><span class="progress-stat-value">${escapeHtml(String(textOrOpts.score))}</span><span class="progress-stat-unit">点</span></div></div>`;
+            stats += `<div class="progress-stat"><span class="progress-stat-label">総合ポイント</span><div class="progress-stat-value-line"><span class="progress-stat-value">${escapeHtml(String(textOrOpts.score))}</span><span class="progress-stat-unit">点</span></div></div>`;
         }
         stats += '</div>';
     }
@@ -4355,8 +4405,7 @@ function renderCheckerboardPatternModal({ ok0, ok1, conflicts0, conflicts1 }) {
     };
 
     const card = (offset, ok, conflicts) => {
-        const labelGender = offset === 0 ? '男子' : '女子';
-        const labelColor = offset === 0 ? '青' : '赤';
+        const labelGender = offset === 0 ? '男' : '女';
         const cls = ok ? '' : 'cb-disabled';
         const status = ok
             ? `<div class="cb-status-ok">✓ 配置可能</div>`
@@ -4366,7 +4415,7 @@ function renderCheckerboardPatternModal({ ok0, ok1, conflicts0, conflicts1 }) {
             : `<button class="btn btn-outline" disabled style="cursor:not-allowed;">使用不可</button>`;
         return `
           <div class="cb-option-card ${cls}">
-            <div class="cb-option-title">左上=${labelGender}（${labelColor}）</div>
+            <div class="cb-option-title">左上=${labelGender}</div>
             ${buildCheckerboardMiniGrid(offset)}
             ${status}
             ${button}
@@ -4478,6 +4527,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
     }
     const shuffleRun = resolveShuffleRunFromInput();
     if (!shuffleRun) return;
+    shuffleRun.isCheckerboard = Boolean(isCheckerboard);
     isShuffleCancelled = false;
     activeShuffleRun = shuffleRun;
     isCalculating = true; hideAlert(); setActionButtons(false, false);
@@ -4537,7 +4587,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
             return showAlert(`備考欄の記法エラー：<br>${parseDetail}`);
         }
         const detail = conflicts.slice(0, 5).map(s => `${s.id} ${s.name}`).join('、');
-        showAlert(`配置不能：絶対制約（備考欄/全体ルール/市松）により候補席が0件の生徒がいます。<br>${detail}${conflicts.length > 5 ? ' ほか' : ''}`);
+        showAlert(`配置できません：必須ルール（備考欄／全体ルール／市松）により候補席がない生徒がいます。<br>${detail}${conflicts.length > 5 ? ' ほか' : ''}`);
         return;
     }
     if (isCheckerboard) checkGenderBalance(tempStudents); else await executeSmartShuffle(tempStudents, false, shuffleRun);
@@ -4556,8 +4606,8 @@ function checkGenderBalance(tempStudents) {
 function showExceptionModal(targetGender, count, tempStudents) {
     isCalculating = false; exceptionMode = true; document.body.classList.add('exception-mode-active');
     targetExceptionGender = targetGender; requiredExceptions = count; currentExceptions.clear(); pendingStudents = tempStudents;
-    const oppColor = targetGender === '男' ? '赤色（女子枠）' : '青色（男子枠）';
-    document.getElementById('modal-text').innerHTML = `${targetGender}子が <b>${count}名</b> 多いです。<br><br>盤面の ${oppColor} をクリックし、<br>本来は異性の席ですが ${targetGender}子が座る<br>「例外席」を ${count}つ 選んでください。`;
+    const oppositeLabel = targetGender === '男' ? '女の枠' : '男の枠';
+    document.getElementById('modal-text').innerHTML = `${targetGender}の生徒が <b>${count}名</b> 多いです。<br><br>盤面の ${oppositeLabel} をクリックし、<br>市松の通常の区分と異なる生徒が座る<br>「例外席」を ${count}つ選んでください。`;
     document.getElementById('modal-overlay').style.display = 'flex';
 }
 
@@ -4620,25 +4670,25 @@ function showLogModal() {
     const d = log.details || {};
     let html = `
         <div class="log-section">
-            <h3>AI最適化プロセス</h3>
+            <h3>配置調整の処理記録</h3>
             <ul class="log-list">
                 ${log.seed != null ? `<li>・使用seed：<b>${log.seed}</b>${log.seedSource === 'automatic' ? '（自動生成）' : '（指定）'} ／ アルゴリズム <b>${escapeHtml(log.algorithmVersion || '')}</b></li>` : ''}
-                <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （ペナルティが残る場合は約20秒まで探索。0なら早期終了）</li>
+                <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （ポイントが残る場合は約20秒まで調整。0なら早期終了）</li>
                 <li>・初期解生成（MRVバックトラッキング）：<b>${(log.phaseATime || 0).toFixed(2)} 秒</b>${log.initialSolutionRuns != null ? `（生成 <b>${log.initialSolutionRuns}</b> 通り）` : (log.multiStartRuns != null ? `（生成 <b>${log.multiStartRuns}</b> 通り）` : '')}</li>
                 <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.annealingStartRuns != null ? `（上位 <b>${log.eliteStartRuns}</b> 通り＋多様 <b>${log.diverseStartRuns}</b> 通りの計 <b>${log.annealingStartRuns}</b> 通り／エリートは選抜内第 <b>${(log.eliteIndex ?? 0) + 1}</b>）` : (log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : '')}</li>
                 <li>・最終微調整（山登り）：<b>${(log.phaseCTime || 0).toFixed(2)} 秒</b></li>
-                ${log.phaseDTime != null ? `<li>・段階的再加熱：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（短縮評価 ${log.reheatScoutRouteCount || 0} 経路 → 上位 ${log.reheatFocusedRouteCount || 0} 経路を ${log.reheatFocusedSweeps || 0} 巡${log.reheatStoppedForStagnation ? '／停滞で終了' : ''}）` : '（ペナルティ0のため不要）'}</li>` : ''}
-                ${log.phaseETime != null ? `<li>・違反当事者の局所修復：<b>${log.phaseETime.toFixed(2)} 秒</b>（交換 ${(log.targetedSwapTrials || 0).toLocaleString()}回・改善 ${(log.targetedSwapImprovements || 0).toLocaleString()}回／3人循環 ${(log.targetedThreeCycleTrials || 0).toLocaleString()}回・改善 ${(log.targetedThreeCycleImprovements || 0).toLocaleString()}回／2ペア4人再配置 ${(log.targetedTwoPairTrials || 0).toLocaleString()}回・改善 ${(log.targetedTwoPairImprovements || 0).toLocaleString()}回）</li>` : ''}
+                ${log.phaseDTime != null ? `<li>・段階的な再調整：<b>${log.phaseDTime.toFixed(2)} 秒</b>${log.reheatRuns ? `（短縮評価 ${log.reheatScoutRouteCount || 0} 経路 → 上位 ${log.reheatFocusedRouteCount || 0} 経路を ${log.reheatFocusedSweeps || 0} 巡${log.reheatStoppedForStagnation ? '／停滞で終了' : ''}）` : '（ポイント0のため不要）'}</li>` : ''}
+                ${log.phaseETime != null ? `<li>・ポイントが残る配置の調整：<b>${log.phaseETime.toFixed(2)} 秒</b>（交換 ${(log.targetedSwapTrials || 0).toLocaleString()}回・改善 ${(log.targetedSwapImprovements || 0).toLocaleString()}回／3人循環 ${(log.targetedThreeCycleTrials || 0).toLocaleString()}回・改善 ${(log.targetedThreeCycleImprovements || 0).toLocaleString()}回／2ペア4人再配置 ${(log.targetedTwoPairTrials || 0).toLocaleString()}回・改善 ${(log.targetedTwoPairImprovements || 0).toLocaleString()}回）</li>` : ''}
                 <li>・試行スワップ：<b>${(log.swapTrials || 0).toLocaleString()}回</b>（悪化受理 ${(log.acceptedWorse || 0).toLocaleString()}回）</li>
                 ${log.threeCycleTrials != null ? `<li>・3人循環：<b>${log.threeCycleTrials.toLocaleString()}回</b>（SAでの改善 ${(log.threeCycleImprovements || 0).toLocaleString()}回、悪化受理 ${(log.threeCycleAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillThreeCycleTrials || 0).toLocaleString()}回、改善 ${(log.hillThreeCycleImprovements || 0).toLocaleString()}回）</li>` : ''}
                 ${log.twoPairTrials != null ? `<li>・2ペア4人再配置：<b>${log.twoPairTrials.toLocaleString()}回</b>（有効候補 ${(log.twoPairCandidates || 0).toLocaleString()}通り、SAでの改善 ${(log.twoPairImprovements || 0).toLocaleString()}回、悪化受理 ${(log.twoPairAcceptedWorse || 0).toLocaleString()}回／山登りでの試行 ${(log.hillTwoPairTrials || 0).toLocaleString()}回、有効候補 ${(log.hillTwoPairCandidates || 0).toLocaleString()}通り、改善 ${(log.hillTwoPairImprovements || 0).toLocaleString()}回）</li>` : ''}
-                <li>・最終評価順序：<b>最大個人負担 → 個人負担の分布 → 合計点</b></li>
-                <li style="padding-left: 15px; font-weight:bold;">最大個人負担：<span style="color:${(d.maxIndividualPenalty || 0) > 0 ? '#e74c3c' : '#27ae60'}">${formatPenaltyPoints(d.maxIndividualPenalty)} 点</span> ／ 不利益を受けた生徒：${d.penalizedStudentCount || 0} 人</li>
-                <li style="padding-left: 15px; font-weight:bold;">最終合計ペナルティ：<span style="color:${log.finalScore > 0 ? '#e74c3c' : '#27ae60'}">${formatPenaltyPoints(log.finalScore)} 点</span></li>
+                <li>・最終評価順序：<b>最大個人ポイント → 個人ポイントの分布 → 総合ポイント</b></li>
+                <li style="padding-left: 15px; font-weight:bold;">最大個人ポイント：<span style="color:${(d.maxIndividualPenalty || 0) > 0 ? '#a56f00' : '#27ae60'}">${formatPenaltyPoints(d.maxIndividualPenalty)} 点</span> ／ ポイントがある生徒：${d.penalizedStudentCount || 0} 人</li>
+                <li style="padding-left: 15px; font-weight:bold;">総合ポイント：<span style="color:${log.finalScore > 0 ? '#a56f00' : '#27ae60'}">${formatPenaltyPoints(log.finalScore)} 点</span></li>
             </ul>
         </div>
         <div class="log-section">
-            <h3>最終合計ペナルティ内訳（合計：${formatPenaltyPoints(log.finalScore)} 点）</h3>
+            <h3>総合ポイントの内訳（合計：${formatPenaltyPoints(log.finalScore)} 点）</h3>
     `;
     const parsePenaltyPoint = txt => {
         const m = String(txt).match(/\+(\d+)点/);
@@ -4705,7 +4755,7 @@ function showLogModal() {
         } else res += `</div>`;
         return res;
     };
-    html += `<div style="font-size:0.85em; margin-bottom:10px; color:#555;">NGペア（8近傍隣接）は絶対制約として探索段階で除外しています。</div>`;
+    html += `<div style="font-size:0.85em; margin-bottom:10px; color:#555;">NGペア（8近傍への隣接禁止）は必須ルールとして候補から除外しています。</div>`;
     const rh = d.ruleHints || {};
     const hintFront = rh.front || '基準1000点・1段階ごとに100点減算';
     const hintBack = rh.back || '基準1000点・1段階ごとに100点減算';
@@ -4714,7 +4764,7 @@ function showLogModal() {
     const hintCor = rh.corridor || '基準330点・1段階ごとに33点減算';
     const hintSeat = rh.seat || `同じ座席: 基準600点・1段階ごとに15点減算（直近15段階） / 近傍8マス: 同点の20%（上限5回）`;
     if (Array.isArray(d.individualPenaltyRows)) {
-        html += renderRotationDupPenalty('生徒別の不利益（違反の合算）', `最大${formatPenaltyPoints(d.maxIndividualPenalty)}点・${d.penalizedStudentCount || 0}人`, d, 'individualPenaltyRows', 'legacyIndividualPenaltyRows', 'log-det-individual', d.totalScore);
+        html += renderRotationDupPenalty('生徒別のポイント（優先ルールの合算）', `最大${formatPenaltyPoints(d.maxIndividualPenalty)}点・${d.penalizedStudentCount || 0}人`, d, 'individualPenaltyRows', 'legacyIndividualPenaltyRows', 'log-det-individual', d.totalScore);
     }
     html += renderRotationDupPenalty('前列重複（currMinR/currMinR+1）', hintFront, d, 'frontDupRows', 'frontDupStrs', 'log-det-front', d.scoreFront);
     html += renderRotationDupPenalty('後列重複（currMaxR/currMaxR-1）', hintBack, d, 'backDupRows', 'backDupStrs', 'log-det-back', d.scoreBack);
@@ -4727,10 +4777,10 @@ function showLogModal() {
     }
     html += renderPenalty('過去の座席重複', hintSeat, d.pastSeatStrs, 'log-det-ps', d.scoreSeat);
     html += `</div><div class="log-section" style="background:#fff3cd; border-color:#ffeeba;">
-        <h3 style="color:#856404; border-bottom-color:#ffeeba;">AIからのレポート</h3>
+        <h3 style="color:#856404; border-bottom-color:#ffeeba;">配置結果の要約</h3>
         <p style="font-size:0.9em; line-height:1.6; color:#555; margin:0;">`;
-    if (log.finalScore === 0) html += `<b>最適化が完了しました。</b><br>絶対制約を守ったうえで、優先ルール上のペナルティ0を達成しています。`;
-    else html += `絶対制約はすべて満たしています。<br>まず一人に集中する不利益を抑え、次に不利益の分布、最後に合計点を比較した配置です。`;
+    if (log.finalScore === 0) html += `<b>配置調整が完了しました。</b><br>必須ルールを守ったうえで、優先ルールのポイントは0です。`;
+    else html += `必須ルールはすべて満たしています。<br>まず一人にポイントが集中しないこと、次に分布、最後に総合ポイントを比較した配置です。`;
     html += `</p></div>`;
     document.getElementById('log-content-area').innerHTML = html; document.getElementById('log-modal').style.display = 'flex';
 }
@@ -4830,7 +4880,7 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         finalScore = phaseERun.finalScore;
         timelineMetrics.phaseEEndActual = performance.now();
         showProgressModal(
-            { phase: finalScore === 0 ? 'ペナルティ0を達成しました' : '探索時間の上限に到達しました', score: finalScore },
+            { phase: finalScore === 0 ? 'ポイント0になりました' : '探索時間の上限に到達しました', score: finalScore },
             timelineContext,
             formatConstraintProgressHtml(bestDetails, hasWindowEdge, hasCorridorEdge),
             true
@@ -4902,6 +4952,10 @@ function renderAssignments() {
     if (seatGridElement) seatGridElement.classList.toggle('previewing', Boolean(previewAssignment));
     const cfg = getRenderConfig();
     const currentData = cfg.currentData;
+    const previewPointDetails = getPreviewPointDetails();
+    const previewLegend = document.getElementById('preview-points-legend');
+    const hasPreviewPoints = Boolean(previewPointDetails && Number(previewPointDetails.totalScore) > 0);
+    if (previewLegend) previewLegend.hidden = !hasPreviewPoints;
 
     for (let i = 0; i < TOTAL_SEATS; i++) {
         const contentEl = document.getElementById(`seat-content-${i}`);
@@ -4912,6 +4966,9 @@ function renderAssignments() {
         contentEl.innerHTML = ''; seatEl.style.border = ''; seatEl.style.boxShadow = ''; seatEl.style.outline = ''; seatEl.style.outlineOffset = ''; // inlineスタイルリセット
         
         if (previewAssignment) seatEl.classList.add('uncommitted'); else seatEl.classList.remove('uncommitted');
+        seatEl.classList.remove('has-adjustment-points');
+        seatEl.removeAttribute('data-point-summary');
+        seatEl.removeAttribute('title');
         seatEl.classList.remove('inactive');
         seatEl.classList.remove('inactive-hidden');
         seatEl.classList.remove('gender-boy', 'gender-girl');
@@ -4929,6 +4986,12 @@ function renderAssignments() {
 
         const student = currentData[i];
         if (student) {
+            const pointSummary = formatStudentPointSummary(previewPointDetails, student.id);
+            if (pointSummary) {
+                seatEl.classList.add('has-adjustment-points');
+                seatEl.dataset.pointSummary = pointSummary;
+                seatEl.title = pointSummary;
+            }
             const borderStyle = getGenderBorderStyle(student, cfg, false);
             if (borderStyle && borderStyle.border) seatEl.style.border = borderStyle.border;
 
@@ -4967,6 +5030,7 @@ function commitSeats() {
     const shuffleMeta = pendingHistoryShuffleMeta ? { ...pendingHistoryShuffleMeta } : null;
     clearPendingHistoryShuffleMeta();
     previewInactiveSeatsBackup = null;
+    clearManualSwapUndoStack();
     setActionButtons(false, false);
     const historyEntry = {
         date: new Date().toLocaleString(),
@@ -4985,6 +5049,7 @@ function cancelPreview() {
     previewAssignment = null;
     pendingHistoryMemoOnCommit = null;
     clearPendingHistoryShuffleMeta();
+    clearManualSwapUndoStack();
     if (previewInactiveSeatsBackup) {
         inactiveSeats = previewInactiveSeatsBackup;
         previewInactiveSeatsBackup = null;
@@ -5456,6 +5521,7 @@ function confirmExcelImport() {
 
 // --- D&D（手動スワップ・事前確認） ---
 let draggedIdx = null;
+let manualSwapUndoStack = [];
 let manualSwapEvalCache = null;
 let manualSwapEvalCacheKeyStored = '';
 let swapConfirmProceedCallback = null;
@@ -5465,6 +5531,16 @@ let swapConfirmEscListener = null;
 function invalidateManualSwapEvalCache() {
     manualSwapEvalCache = null;
     manualSwapEvalCacheKeyStored = '';
+}
+
+function clearManualSwapUndoStack() {
+    manualSwapUndoStack = [];
+    updateManualSwapUndoButton();
+}
+
+function updateManualSwapUndoButton() {
+    const btn = document.getElementById('btn-undo-manual-swap');
+    if (btn) btn.style.display = previewAssignment && manualSwapUndoStack.length > 0 ? 'block' : 'none';
 }
 
 function manualSwapCacheKey() {
@@ -5494,7 +5570,7 @@ function buildManualSwapEvalContext() {
     const parsedRuleSet = parseOverallRulesText(rulesText);
     assignPlacementRulesToStudents(students, parsedRuleSet);
     const bounds = getGridBoundaries();
-    const isCheckerboard = checkerboardOffset !== 0;
+    const isCheckerboard = Boolean(pendingHistoryShuffleMeta && pendingHistoryShuffleMeta.isCheckerboard);
     if (!prepareStudentSeatConstraintsSilent(students, isCheckerboard, bounds)) return null;
 
     const preparedById = new Map(students.map(s => [s.id, s]));
@@ -5799,6 +5875,19 @@ function applyPreviewSwap(idx1, idx2) {
     const temp = arr[idx1];
     arr[idx1] = arr[idx2];
     arr[idx2] = temp;
+    manualSwapUndoStack.push({ idx1, idx2 });
+    updateManualSwapUndoButton();
+    markPendingShuffleAsManuallyModified();
+    renderAssignments();
+}
+
+function undoLastManualSwap() {
+    if (!previewAssignment || manualSwapUndoStack.length === 0) return;
+    const last = manualSwapUndoStack.pop();
+    const temp = previewAssignment[last.idx1];
+    previewAssignment[last.idx1] = previewAssignment[last.idx2];
+    previewAssignment[last.idx2] = temp;
+    updateManualSwapUndoButton();
     markPendingShuffleAsManuallyModified();
     renderAssignments();
 }
@@ -5884,6 +5973,7 @@ function saveCurrentClassData() {
         inactiveSeats: Array.from(inactiveSeats), assignment: seatAssignment, histories: histories, colors: colors,
         shuffleSeedInput: shuffleSeedInput,
         lastUsedShuffleSeed: lastUsedShuffleSeed,
+        lastBackupAt: lastBackupAt,
         genderBorderData: genderBorderData,
         printInactiveMode: printInactiveMode === 'frame' ? 'frame' : 'hide'
     };
@@ -5903,6 +5993,7 @@ function loadCurrentClassData() {
     previewAssignment = null;
     previewInactiveSeatsBackup = null;
     pendingHistoryMemoOnCommit = null;
+    lastBackupAt = '';
     setActionButtons(false, false);
     if (dataStr) {
         try {
@@ -5927,6 +6018,7 @@ function loadCurrentClassData() {
             printInactiveMode = data.printInactiveMode === 'frame' ? 'frame' : 'hide';
             shuffleSeedInput = typeof data.shuffleSeedInput === 'string' ? data.shuffleSeedInput : '';
             lastUsedShuffleSeed = coerceStoredShuffleSeed(data.lastUsedShuffleSeed);
+            lastBackupAt = typeof data.lastBackupAt === 'string' ? data.lastBackupAt : '';
             histories = (data.histories || []).map(h => ({
                 date: h.date || '',
                 assignment: h.assignment || [],
@@ -5935,10 +6027,11 @@ function loadCurrentClassData() {
                 seed: coerceStoredShuffleSeed(h.seed),
                 seedSource: h.seedSource === 'specified' || h.seedSource === 'automatic' ? h.seedSource : undefined,
                 algorithmVersion: typeof h.algorithmVersion === 'string' ? h.algorithmVersion : undefined,
+                isCheckerboard: h.isCheckerboard === true,
                 manuallyModified: h.manuallyModified === true
             }));
             if(data.colors) {
-                const colorFallback = ['#000000','#666666','#000080','#0000ff','#008000','#ff0000'];
+                const colorFallback = DEFAULT_SEAT_COLORS;
                 for(let i=1;i<=6;i++) {
                     const v = data.colors[`c${i}`];
                     const el = document.getElementById(`color-${i}`);
@@ -5963,6 +6056,7 @@ function loadCurrentClassData() {
         printInactiveMode = 'hide';
         shuffleSeedInput = '';
         lastUsedShuffleSeed = null;
+        lastBackupAt = '';
         resetClassScopedSettingsUI();
         applySeatLayoutToUI(null);
     }
@@ -5971,6 +6065,7 @@ function loadCurrentClassData() {
     updateClassNameDisplay();
     updatePrintInactiveToggleUi();
     syncShuffleSeedControlsFromState();
+    refreshBackupStatus();
     renderAssignments();
     syncConstraintsBaselineFromPersisted();
 }
@@ -5981,6 +6076,7 @@ function updateHistorySelect() {
     historySelect.innerHTML = '';
     if(histories.length === 0) {
         historySelect.innerHTML = '<option value="">履歴なし</option>';
+        historySelect.dataset.appliedValue = '';
         const memoInput = document.getElementById('history-memo-input');
         if (memoInput) memoInput.value = '';
         updateDeskTitleDisplay();
@@ -5995,8 +6091,20 @@ function updateHistorySelect() {
         historySelect.appendChild(option);
     });
     if (prevValue !== '' && histories[prevValue]) historySelect.value = prevValue;
+    historySelect.dataset.appliedValue = historySelect.value;
     syncHistoryMemoInput();
     updateDeskTitleDisplay();
+}
+
+function requestHistorySelectionToBoard() {
+    const sel = document.getElementById('history-select');
+    if (!sel) return false;
+    if (previewAssignment && !confirm('未確定の配置は破棄されます。選択した履歴を盤面へ復元しますか？')) {
+        sel.value = sel.dataset.appliedValue || '';
+        return false;
+    }
+    applyHistorySelectionToBoard();
+    return true;
 }
 
 /** プルダウンで選んだ履歴の座席・空席を確定盤面として反映（グレー予約状態にはしない） */
@@ -6009,6 +6117,7 @@ function applyHistorySelectionToBoard() {
         previewAssignment = null;
         previewInactiveSeatsBackup = null;
         pendingHistoryMemoOnCommit = null;
+        clearManualSwapUndoStack();
         setActionButtons(false, false);
         renderAssignments();
         return;
@@ -6018,12 +6127,14 @@ function applyHistorySelectionToBoard() {
     previewAssignment = null;
     previewInactiveSeatsBackup = null;
     pendingHistoryMemoOnCommit = null;
+    clearManualSwapUndoStack();
     if (Array.isArray(history.inactiveSeats)) {
         inactiveSeats = new Set(history.inactiveSeats);
     } else {
         inactiveSeats = new Set();
     }
     setActionButtons(false, false);
+    sel.dataset.appliedValue = selectedIndex;
     saveCurrentClassData();
     updateCounters();
     renderAssignments();
@@ -6167,8 +6278,11 @@ function confirmExportBackup() {
     const yymmdd = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
     const a = document.createElement('a');
     a.href = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData));
-    a.download = `sekigaekun_${yymmdd}.json`;
+    a.download = `SekiGae_${yymmdd}.json`;
     a.click();
+    lastBackupAt = new Date().toLocaleString();
+    saveCurrentClassData();
+    refreshBackupStatus();
     closeExportBackupModal();
 }
 
