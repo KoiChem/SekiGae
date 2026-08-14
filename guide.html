@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="SekiGaeの使い方。名簿の貼り付け、座席数の調整、条件付きシャッフル、視点の切り替え、印刷までを説明します。">
-<title>SekiGaeの使い方</title>
+<title>せきがえくんガイド</title>
 <style>
 :root {
     --guide-primary: #2c3e50;
@@ -99,10 +99,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
 
 .guide-main { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
 .guide-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
-    gap: 28px;
-    align-items: stretch;
+    display: block;
     margin: 34px 0 24px;
     padding: clamp(28px, 5vw, 58px);
     color: #fff;
@@ -156,68 +153,8 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
 }
 .hero-privacy strong { color: #fff; }
 
-.hero-flow {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 10px;
-    min-height: 260px;
-    padding: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.08);
-}
-.hero-flow-title { margin: 0 0 4px; color: #cfeeff; font-size: 0.82rem; font-weight: 700; letter-spacing: 0.08em; }
-.hero-flow-step {
-    display: grid;
-    grid-template-columns: 32px 1fr;
-    gap: 11px;
-    align-items: center;
-    padding: 10px 12px;
-    border-radius: 9px;
-    background: rgba(255, 255, 255, 0.1);
-}
-.hero-flow-step-number {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    color: var(--guide-primary);
-    background: #fff;
-    font-size: 0.82rem;
-    font-weight: 900;
-}
-.hero-flow-step strong { display: block; font-size: 0.93rem; }
-.hero-flow-step span { display: block; color: #d7e4ed; font-size: 0.77rem; }
-
-.guide-anchor-nav {
-    position: sticky;
-    top: 58px;
-    z-index: 10;
-    display: flex;
-    gap: 7px;
-    overflow-x: auto;
-    padding: 10px 0;
-    scrollbar-width: none;
-}
-.guide-anchor-nav::-webkit-scrollbar { display: none; }
-.guide-anchor-nav a {
-    flex: 0 0 auto;
-    padding: 7px 13px;
-    color: var(--guide-primary);
-    background: rgba(255, 255, 255, 0.94);
-    border: 1px solid var(--guide-line);
-    border-radius: 999px;
-    box-shadow: 0 2px 6px rgba(32, 48, 64, 0.04);
-    font-size: 0.82rem;
-    font-weight: 700;
-    text-decoration: none;
-}
-.guide-anchor-nav a:hover { color: var(--guide-accent-dark); border-color: #9ecbe6; }
-
 .guide-section {
-    scroll-margin-top: 110px;
+    scroll-margin-top: 78px;
     margin: 28px 0 52px;
 }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
@@ -348,8 +285,6 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
 .guide-footer a { color: #eaf2f8; font-size: 0.82rem; font-weight: 700; }
 
 @media (max-width: 800px) {
-    .guide-hero { grid-template-columns: 1fr; }
-    .hero-flow { min-height: auto; }
     .step-list, .method-grid, .reference-grid { grid-template-columns: 1fr; }
     .feature-grid { grid-template-columns: 1fr; }
     .section-heading { display: block; }
@@ -360,7 +295,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
     .guide-nav { min-height: 52px; gap: 8px; }
     .guide-brand small { display: none; }
     .guide-header-links a { padding: 6px 7px; font-size: 0.74rem; }
-    .guide-anchor-nav { top: 52px; margin: 0 -11px; padding: 8px 11px; }
+    .guide-section { scroll-margin-top: 70px; }
     .guide-hero { margin-top: 22px; padding: 27px 20px; border-radius: 13px; }
     .guide-hero h1 { font-size: 1.9rem; }
     .guide-actions { display: grid; grid-template-columns: 1fr; }
@@ -372,13 +307,11 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
     .guide-footer-links { margin-top: 12px; }
 }
 @media print {
-    .guide-header, .guide-anchor-nav, .guide-actions { display: none; }
+    .guide-header, .guide-actions { display: none; }
     body { background: #fff; }
     .guide-main { width: 100%; }
     .guide-hero { color: #000; background: #fff; border: 1px solid #bbb; box-shadow: none; }
-    .guide-hero-lead, .hero-privacy, .hero-flow-step span { color: #333; }
-    .hero-flow { border-color: #bbb; background: #f8f8f8; }
-    .hero-flow-step { background: #eee; }
+    .guide-hero-lead, .hero-privacy { color: #333; }
     .guide-footer { color: #333; background: #fff; border-top: 1px solid #bbb; }
     .guide-footer a { color: #333; }
     .step-card, .method-card, .feature-card, .reference-card, .rule-table-wrap, .faq-list details { box-shadow: none; }
@@ -406,29 +339,14 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
         <div>
             <p class="guide-eyebrow">SEKIGAE / 使い方ガイド</p>
             <h1 id="guide-title">名簿を貼り付けて、<br>条件に合う座席表をつくる。</h1>
-            <p class="guide-hero-lead">座席数の調整から、条件付きの席替え、見やすい表示、教員側・生徒側の視点、A4印刷・PDF保存まで。基本は5ステップです。</p>
+            <p class="guide-hero-lead">名簿の貼り付けから、座席数の調整、条件付きの席替え、見やすい表示、教員側・生徒側の視点、A4印刷・PDF保存まで。基本は5ステップです。</p>
             <div class="guide-actions">
                 <a class="guide-btn guide-btn-primary" href="./sample.html">サンプル版で試す</a>
                 <a class="guide-btn guide-btn-light" href="./index.html">通常版を開く</a>
             </div>
             <p class="hero-privacy"><strong>データについて：</strong>名簿や履歴はこの端末のブラウザ内に保存されます。大切なデータは定期的にバックアップしてください。</p>
         </div>
-        <div class="hero-flow" aria-label="アプリの基本的な流れ">
-            <p class="hero-flow-title">基本の流れ</p>
-            <div class="hero-flow-step"><span class="hero-flow-step-number">1</span><div><strong>座席数を調整</strong><span>使わない席を空席にする</span></div></div>
-            <div class="hero-flow-step"><span class="hero-flow-step-number">2</span><div><strong>名簿を貼り付け</strong><span>Excelの表をそのまま取り込む</span></div></div>
-            <div class="hero-flow-step"><span class="hero-flow-step-number">3</span><div><strong>配置を選ぶ</strong><span>シャッフル・市松・整列</span></div></div>
-            <div class="hero-flow-step"><span class="hero-flow-step-number">4</span><div><strong>確認して確定</strong><span>手動調整と履歴保存</span></div></div>
-            <div class="hero-flow-step"><span class="hero-flow-step-number">5</span><div><strong>視点を選んで印刷</strong><span>A4印刷またはPDF保存</span></div></div>
-        </div>
     </section>
-
-    <nav class="guide-anchor-nav" aria-label="ガイドの章">
-        <a href="#quick-start">1. まず使う</a>
-        <a href="#features">2. やりたいことから探す</a>
-        <a href="#reference">3. 設定を詳しく知る</a>
-        <a href="#faq">困ったとき</a>
-    </nav>
 
     <section id="quick-start" class="guide-section" aria-labelledby="quick-start-title">
         <div class="section-heading">
@@ -436,24 +354,23 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
                 <p class="section-kicker">01 / QUICK START</p>
                 <h2 id="quick-start-title">まず使う：基本5ステップ</h2>
             </div>
-            <div class="section-tip">初めてのときは、まず通常の「シャッフル」だけで試すのがおすすめです。</div>
         </div>
-        <p class="section-intro">最初に座席数を整え、その後に名簿を取り込みます。配置はすぐに確定せず、プレビューを確認してから保存します。</p>
+        <p class="section-intro">名簿を取り込み、人数に合わせて座席数を調整します。配置はすぐに確定せず、プレビューを確認してから保存します。</p>
 
         <ol class="step-list">
             <li class="step-card">
                 <div class="step-number">1</div>
                 <div>
                     <span class="step-tag">最初に必要</span>
-                    <h3>座席数を調整する</h3>
-                    <p>「座席表・設定」で使わない席をクリックし、空席にします。生徒数が有効座席数を超えていないことを確認してください。必要なら、教卓から見た左右端を「廊下」「窓」に設定します。</p>
+                    <h3>名簿を貼り付ける</h3>
+                    <p>「名簿管理」を開き、Excelなどから「番号・氏名・かな・性別・属性1・属性2・備考」の7列をコピーして貼り付け、「表に反映」を押します。属性1・属性2には委員会や部活動などを入れておくのがおすすめです。備考は自由メモではなく、個人の座席指定を入力する欄です。指定がなければ空欄にします。</p>
                 </div>
             </li>
             <li class="step-card">
                 <div class="step-number">2</div>
                 <div>
-                    <h3>名簿を貼り付ける</h3>
-                    <p>「名簿管理」を開き、Excelから7列の名簿をコピーして貼り付けます。「表に反映」を押し、番号・氏名・かな・性別・属性1・属性2・備考を確認します。</p>
+                    <h3>座席数を調整する</h3>
+                    <p>「座席表・設定」で使わない席をクリックし、空席にします。名簿の人数が有効座席数を超えていないことを確認してください。必要なら、教卓から見た左右端を「廊下」「窓」に設定します。</p>
                 </div>
             </li>
             <li class="step-card">
