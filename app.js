@@ -2221,7 +2221,7 @@ function initGrid() {
         pin.className = 'overall-rule-pin';
         pin.hidden = true;
         pin.setAttribute('role', 'img');
-        pin.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 3.5 20.5 9.5l-3 1.5-3.5 3.5 2 2-1.5 1.5-2-2-5.5 5.5-.5-.5L12 15l-2-2 3.5-3.5 1-3z"/></svg>';
+        pin.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.25C8.15 2.25 5 5.2 5 8.85c0 4.72 7 12.9 7 12.9s7-8.18 7-12.9c0-3.65-3.15-6.6-7-6.6Zm0 9.1a2.55 2.55 0 1 1 0-5.1 2.55 2.55 0 0 1 0 5.1Z"/></svg>';
         seat.appendChild(label); seat.appendChild(content); seat.appendChild(pin); grid.appendChild(seat);
     }
 }

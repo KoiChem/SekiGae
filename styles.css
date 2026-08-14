@@ -790,14 +790,14 @@ body.exception-mode-active .settings-bottom { pointer-events: none; filter: gray
 .seat.uncommitted:not(.inactive) .seat-content { background: #dfe3e8; }
 .seat.has-adjustment-points:not(.inactive) { border-color: #c08a00 !important; box-shadow: inset 0 0 0 2px #ffe7a0; }
 .overall-rule-pin {
-    position: absolute; bottom: 4px; left: 5px; z-index: 3; width: 16px; height: 16px;
+    position: absolute; bottom: 3px; left: 4px; z-index: 3; width: 22px; height: 22px;
     color: #c0392b; transform: scaleY(-1); pointer-events: none;
-    filter: drop-shadow(0 1px 0 rgba(255,255,255,0.92));
+    filter: drop-shadow(0 0 0.8px #fff) drop-shadow(0 1px 1px rgba(0,0,0,0.22));
 }
 .overall-rule-pin.is-row-col { color: #27823a; }
 .overall-rule-pin svg { display: block; width: 100%; height: 100%; }
 .classroom-wrapper.student-view .overall-rule-pin {
-    top: 4px; right: 5px; bottom: auto; left: auto; transform: scaleX(-1);
+    top: 3px; right: 4px; bottom: auto; left: auto; transform: scaleX(-1);
 }
 .seat-grid.previewing { background: #dfe3e8; }
 .seat-grid.previewing .seat.inactive-hidden {
