@@ -1478,29 +1478,45 @@ function assignPlacementRulesToStudents(students, parsedRuleSet) {
     });
 }
 
-/** 全体ルール由来の盤面ピン種別。座席指定（複数候補を含む）を行・列指定より優先する。 */
-function getOverallRulePinKind(student, parsedRuleSet) {
+/**
+ * 全体ルール・備考欄の指定を盤面ピンへ反映する。
+ * 座席指定（複数候補を含む）を行・列指定より優先する。
+ */
+function getPlacementPinInfo(student, parsedRuleSet) {
     if (!student || !parsedRuleSet) return null;
-    const applicable = (parsedRuleSet.placementRules || []).filter(rule =>
+    const applicableOverall = (parsedRuleSet.placementRules || []).filter(rule =>
         studentIdMatchesPrefix(student.id, rule.prefix)
     );
-    if (applicable.some(rule => rule.kind === 'seat')) return 'seat';
-    if (applicable.some(rule => rule.kind === 'row' || rule.kind === 'col')) return 'row-col';
+    const personal = parsePersonalRuleConstraints(student.flags || '');
+    const hasPersonalSeat = personal.errors.length === 0 && personal.seats.length > 0;
+    const hasPersonalRowCol = personal.errors.length === 0 && (personal.rows.length > 0 || personal.cols.length > 0);
+    const hasOverallSeat = applicableOverall.some(rule => rule.kind === 'seat');
+    const hasOverallRowCol = applicableOverall.some(rule => rule.kind === 'row' || rule.kind === 'col');
+    const sourceLabel = (fromPersonal, fromOverall) => {
+        if (fromPersonal && fromOverall) return '全体ルール・備考欄';
+        return fromPersonal ? '備考欄' : '全体ルール';
+    };
+    if (hasPersonalSeat || hasOverallSeat) {
+        return { kind: 'seat', source: sourceLabel(hasPersonalSeat, hasOverallSeat) };
+    }
+    if (hasPersonalRowCol || hasOverallRowCol) {
+        return { kind: 'row-col', source: sourceLabel(hasPersonalRowCol, hasOverallRowCol) };
+    }
     return null;
 }
 
 function updateOverallRulePin(seatEl, student, parsedRuleSet) {
     const pinEl = seatEl && seatEl.querySelector('.overall-rule-pin');
     if (!pinEl) return;
-    const kind = getOverallRulePinKind(student, parsedRuleSet);
-    pinEl.hidden = !kind;
-    pinEl.classList.toggle('is-row-col', kind === 'row-col');
-    if (!kind) {
+    const info = getPlacementPinInfo(student, parsedRuleSet);
+    pinEl.hidden = !info;
+    pinEl.classList.toggle('is-row-col', info && info.kind === 'row-col');
+    if (!info) {
         pinEl.removeAttribute('aria-label');
         pinEl.removeAttribute('title');
         return;
     }
-    const label = kind === 'seat' ? '全体ルール：座席指定' : '全体ルール：行・列指定';
+    const label = info.kind === 'seat' ? `${info.source}：座席指定` : `${info.source}：行・列指定`;
     pinEl.setAttribute('aria-label', label);
     pinEl.title = label;
 }
