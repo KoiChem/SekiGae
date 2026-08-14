@@ -205,12 +205,12 @@ const SOFT_SCORE_FIELDS = [
     'seatBase', 'seatStep'
 ];
 const COLOR_PALETTE_PRESET = [
-    // 8 columns × 3 rows. All colors retain readable contrast on white paper.
-    '#1F2937', '#374151', '#4B5563', '#6B7280', '#3F5F8A', '#456F8A', '#3F756F', '#4F7658',
-    '#68723E', '#7A682E', '#8A5C3F', '#965C50', '#955A63', '#8F5E70', '#705F88', '#59658C',
-    '#526F92', '#4C778A', '#487B71', '#5F784C', '#7A733C', '#8B674A', '#9A5E4C', '#865E7F'
+    // 8 columns × 3 rows. Vivid enough for posted charts while retaining readable contrast on white paper.
+    '#1F2937', '#374151', '#4B5563', '#6B7280', '#0057B8', '#1565C0', '#007C91', '#00796B',
+    '#00875A', '#2E7D32', '#5B7F00', '#8D6E00', '#B45309', '#A65300', '#A13F2B', '#C62828',
+    '#C2185B', '#9D174D', '#7B1FA2', '#512DA8', '#3949AB', '#006C9C', '#00695C', '#7A4E00'
 ];
-const DEFAULT_SEAT_COLORS = ['#1F2937', '#4B5563', '#3F5F8A', '#3F756F', '#8A5C3F', '#705F88'];
+const DEFAULT_SEAT_COLORS = ['#1F2937', '#4B5563', '#0057B8', '#00796B', '#C62828', '#7B1FA2'];
 
 /** 履歴の深さ depth (0=直前回, 1=前々回, 2=3回前, ...) を日本語ラベルへ */
 function depthLabel(d) {

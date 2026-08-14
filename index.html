@@ -354,7 +354,7 @@
             <input type="hidden" id="layout-rules" value="">
             
             <h3 style="margin-top:8px;">色番号設定 (1〜6)</h3>
-            <p class="color-palette-help">印刷時も読みやすい、彩度を抑えた24色（8列×3行）です。黒〜グレーは4色から選べます。</p>
+            <p class="color-palette-help">掲示物にも使いやすい、鮮やかさと読みやすさを両立した24色（8列×3行）です。黒〜グレーは4色から選べます。</p>
             <div id="color-palette-group" class="color-palette-group">
                 <div class="color-palette-row">
                     <span class="color-palette-label">1</span>
@@ -425,6 +425,12 @@
 
         <div class="panel">
             <h2>データ・履歴管理</h2>
+            <div class="shuffle-seed-row">
+                <label for="shuffle-seed-input">再現用seed（任意）</label>
+                <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
+                <span id="shuffle-seed-help">探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。</span>
+                <span class="shuffle-seed-used">今回使用: <output id="shuffle-seed-used">—</output></span>
+            </div>
             <p class="local-data-note">データはこのパソコンのブラウザ内にのみ保存されます。定期的にバックアップ保存してください。</p>
             <label for="history-select" style="font-size:0.8em; font-weight:bold;">過去の配置を盤面に復元</label>
             <div class="flex-row" style="margin-bottom: 6px;">
@@ -447,12 +453,6 @@
             <div class="flex-row">
                 <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
                 <button type="button" class="btn btn-outline" style="font-size:0.85em; flex:1;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
-            </div>
-            <div class="shuffle-seed-row">
-                <label for="shuffle-seed-input">再現用seed（任意）</label>
-                <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
-                <span id="shuffle-seed-help">探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。</span>
-                <span class="shuffle-seed-used">今回使用: <output id="shuffle-seed-used">—</output></span>
             </div>
         </div>
     </div>
