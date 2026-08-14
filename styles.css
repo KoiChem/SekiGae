@@ -730,8 +730,9 @@ body.exception-mode-active .settings-bottom { pointer-events: none; filter: gray
     flex: 1 1 40%;
     min-width: 0;
     max-width: 48%;
-    background: #7f8c8d;
-    color: #fff;
+    background: #fff;
+    border: 2pt solid #4b5563;
+    color: #4b5563;
     text-align: center;
     padding: 8px 6px;
     border-radius: 5px;
