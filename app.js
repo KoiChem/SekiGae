@@ -44,6 +44,12 @@ function coerceStoredShuffleSeed(raw) {
     return parsed.ok && parsed.isSpecified ? parsed.seed : null;
 }
 
+/** 履歴に保存する合計ポイント。旧データや不正値は未記録として扱う。 */
+function coerceStoredTotalScore(raw) {
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 /** 自動seedは暗号学的乱数を優先し、非対応環境では時刻由来の値へ退避する。 */
 function createAutomaticShuffleSeed() {
     if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
@@ -900,11 +906,54 @@ function getShuffleSeedInputElement() {
     return document.getElementById('shuffle-seed-input');
 }
 
-function syncShuffleSeedControlsFromState() {
+function getRecentShuffleResults(previewPointDetails) {
+    const previewResult = previewAssignment && pendingHistoryShuffleMeta
+        ? {
+            seed: pendingHistoryShuffleMeta.seed,
+            totalScore: coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
+                ?? coerceStoredTotalScore(pendingHistoryShuffleMeta.totalScore)
+        }
+        : null;
+    if (previewResult) return [previewResult, histories[0] || null, histories[1] || null];
+    if (histories.length > 0) return [histories[0], histories[1] || null, histories[2] || null];
+    return [lastUsedShuffleSeed == null ? null : { seed: lastUsedShuffleSeed, totalScore: null }, null, null];
+}
+
+function formatShuffleResult(result) {
+    if (!result || result.seed == null) return '—';
+    const score = coerceStoredTotalScore(result.totalScore);
+    return `${result.seed} / 合計 ${score == null ? '—' : formatPenaltyPoints(score)}点`;
+}
+
+function syncShuffleSeedControlsFromState(previewPointDetails) {
     const input = getShuffleSeedInputElement();
     if (input) input.value = shuffleSeedInput;
+    const results = getRecentShuffleResults(previewPointDetails);
     const used = document.getElementById('shuffle-seed-used');
-    if (used) used.textContent = lastUsedShuffleSeed == null ? '—' : String(lastUsedShuffleSeed);
+    if (used) used.textContent = formatShuffleResult(results[0]);
+
+    [
+        ['shuffle-seed-previous', '前回', results[1]],
+        ['shuffle-seed-before-previous', '前々回', results[2]]
+    ].forEach(([id, label, result]) => {
+        const button = document.getElementById(id);
+        if (!button) return;
+        button.textContent = `${label}: ${formatShuffleResult(result)}`;
+        button.disabled = !result || result.seed == null;
+    });
+}
+
+/** 前回・前々回ボタンはseed入力欄へ値を入れるだけで、シャッフルは実行しない。 */
+function applyRecentShuffleSeed(index) {
+    const result = getRecentShuffleResults()[index];
+    if (!result || result.seed == null) return;
+    shuffleSeedInput = String(result.seed);
+    syncShuffleSeedControlsFromState();
+    const input = getShuffleSeedInputElement();
+    if (input) {
+        input.focus();
+        input.select();
+    }
 }
 
 function refreshBackupStatus() {
@@ -1007,7 +1056,7 @@ function buildSeatTrackConstraintsHtml(student, ngPeerIds) {
     html += `<div class="seat-track-c-block"><span class="seat-track-c-label">備考欄・個人指定</span>`;
     html += `<div class="seat-track-c-val">${flags ? escapeHtml(flags).replace(/\n/g, '<br>') : '<span class="seat-track-c-muted">なし</span>'}</div></div>`;
 
-    html += `<div class="seat-track-c-block"><span class="seat-track-c-label">NG隣接禁止（全体ルール）</span>`;
+    html += `<div class="seat-track-c-block"><span class="seat-track-c-label">NG隣接禁止</span>`;
     if (ngPeerIds.length === 0) {
         html += `<div class="seat-track-c-val"><span class="seat-track-c-muted">該当なし</span></div></div>`;
     } else {
@@ -1204,7 +1253,22 @@ function closeSampleWelcomeModal() {
     if (modal) modal.style.display = 'none';
 }
 
+let appViewportSyncFrame = null;
+/** iPad Safari のキーボード開閉後も、アプリの高さを実表示領域へ戻す。 */
+function syncAppViewportHeight() {
+    const viewport = window.visualViewport;
+    const height = Math.round(viewport ? viewport.height : window.innerHeight);
+    if (height > 0) document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
+    appViewportSyncFrame = null;
+}
+
+function scheduleAppViewportHeightSync() {
+    if (appViewportSyncFrame != null) cancelAnimationFrame(appViewportSyncFrame);
+    appViewportSyncFrame = requestAnimationFrame(syncAppViewportHeight);
+}
+
 function initializeApp() {
+    syncAppViewportHeight();
     initSeatLayoutTable();
     initColorPaletteUI();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
@@ -1212,9 +1276,14 @@ function initializeApp() {
     applyPrintOrientation();
     initFormArrowNavigation();
     window.addEventListener('resize', () => {
+        scheduleAppViewportHeightSync();
         if (document.body.classList.contains('print-mode')) updatePrintToolbarInset();
         scheduleFitDeskClassName();
     });
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', scheduleAppViewportHeightSync);
+        window.visualViewport.addEventListener('scroll', scheduleAppViewportHeightSync);
+    }
     let resizeFitTimer = null;
     window.addEventListener('resize', () => {
         if (resizeFitTimer) clearTimeout(resizeFitTimer);
@@ -1575,7 +1644,7 @@ function logicalSeatSetsDisjoint(a, b) {
 }
 
 /**
- * 名簿→座席表切替時：記法エラーと、全体ルールの行/列と備考欄 @ の論理交差のみ検証。
+ * 名簿→座席表切替時：記法エラー、個別NGの相手番号、全体ルールの行/列と備考欄 @ の論理交差を検証。
  * @returns {{ ok: true } | { ok: false, html?: string }}
  */
 function validateRosterSaveConstraints(tempStudents, rulesText) {
@@ -1592,6 +1661,28 @@ function validateRosterSaveConstraints(tempStudents, rulesText) {
     if (parseErrStudents.length > 0) {
         const detail = parseErrStudents.slice(0, 5).map(s => `${s.id} ${s.name}: ${s._parseErrors.join(' / ')}`).join('<br>');
         return { ok: false, html: `備考欄の記法エラー：<br>${detail}${parseErrStudents.length > 5 ? '<br>…' : ''}` };
+    }
+
+    const studentByNormalizedId = new Map();
+    tempStudents.forEach(s => {
+        const id = String(s.id || '').trim();
+        if (id) studentByNormalizedId.set(id.toLowerCase(), s);
+    });
+    const invalidNgTargets = [];
+    tempStudents.forEach(s => {
+        const sourceId = String(s.id || '').trim();
+        const personal = parsePersonalRuleConstraints(s.flags);
+        personal.ngIds.forEach(targetId => {
+            const target = studentByNormalizedId.get(String(targetId).toLowerCase());
+            if (!target) invalidNgTargets.push(`${sourceId} ${s.name}: NG(${targetId}) の番号が名簿にありません`);
+            else if (String(target.id).toLowerCase() === sourceId.toLowerCase()) invalidNgTargets.push(`${sourceId} ${s.name}: 自分自身を NG(${targetId}) に指定できません`);
+        });
+    });
+    if (invalidNgTargets.length > 0) {
+        return {
+            ok: false,
+            html: `備考欄のNG指定エラー：<br>${invalidNgTargets.slice(0, 5).join('<br>')}${invalidNgTargets.length > 5 ? '<br>…' : ''}`
+        };
     }
 
     const placementRules = parsedRuleSet.placementRules;
@@ -2932,7 +3023,7 @@ function parsePlacementItems(rawItems) {
 }
 
 function parsePersonalRuleConstraints(flagsText) {
-    const parsed = { seats: [], cols: [], rows: [], hasHardRule: false, errors: [] };
+    const parsed = { seats: [], cols: [], rows: [], ngIds: [], hasHardRule: false, errors: [] };
     if (!flagsText) return parsed;
     const normalized = normalizeStr(flagsText);
 
@@ -2950,8 +3041,19 @@ function parsePersonalRuleConstraints(flagsText) {
         if (placement.kind === 'row') parsed.rows.push(...placement.values);
     }
 
+    const ngRegex = /ng\(([^()]*)\)/g;
+    while ((match = ngRegex.exec(normalized)) !== null) {
+        const targetId = match[1].trim();
+        if (!targetId || /[\s,]/.test(targetId)) {
+            parsed.errors.push(`無効な備考欄記法: NG(${match[1]})`);
+            continue;
+        }
+        parsed.ngIds.push(targetId);
+    }
+
     const stripped = normalized
         .replace(/@\(([^)]+)\)/g, '')
+        .replace(/ng\(([^()]*)\)/g, '')
         .replace(/[\s,;\/]+/g, '');
     if (stripped.length > 0) parsed.errors.push(`無効な備考欄記法: ${flagsText}`);
     return parsed;
@@ -3256,6 +3358,18 @@ function buildNgPairsMap(students, rulesText) {
             });
         });
     });
+    const studentIdByNormalizedId = new Map();
+    students.forEach(student => {
+        const id = String(student.id || '').trim();
+        if (id) studentIdByNormalizedId.set(id.toLowerCase(), student.id);
+    });
+    students.forEach(student => {
+        const personal = parsePersonalRuleConstraints(student.flags || '');
+        personal.ngIds.forEach(targetId => {
+            const resolvedTargetId = studentIdByNormalizedId.get(String(targetId).toLowerCase());
+            if (resolvedTargetId != null) addNgPair(student.id, resolvedTargetId);
+        });
+    });
     return map;
 }
 function collectActiveSeats() {
@@ -3362,10 +3476,12 @@ function finalizeShuffleSuccess(bestAssign, finalScore) {
             seedSource: activeShuffleRun.seedSource,
             algorithmVersion: activeShuffleRun.algorithmVersion,
             isCheckerboard: activeShuffleRun.isCheckerboard === true,
-            manuallyModified: false
+            manuallyModified: false,
+            totalScore: coerceStoredTotalScore(finalScore)
         };
     }
     activeShuffleRun = null;
+    syncShuffleSeedControlsFromState({ totalScore: finalScore });
     setActionButtons(true, true);
     if (finalScore > 0) {
         showAlert(`シャッフル完了。\n必須ルールを守ったうえで、個人ポイントの集中を優先して抑えました。金枠の座席と「詳細ログ」で内訳を確認できます。`, "warning");
@@ -5028,6 +5144,7 @@ function renderAssignments() {
     const rulesEl = document.getElementById('overall-rules');
     const parsedOverallRules = parseOverallRulesText(rulesEl ? rulesEl.value.trim() : '');
     const previewPointDetails = getPreviewPointDetails();
+    syncShuffleSeedControlsFromState(previewPointDetails);
     const previewLegend = document.getElementById('preview-points-legend');
     const hasPreviewPoints = Boolean(previewPointDetails && Number(previewPointDetails.totalScore) > 0);
     if (previewLegend) previewLegend.hidden = !hasPreviewPoints;
@@ -5101,10 +5218,15 @@ function autoFitText() {
 function commitSeats() {
     if(!previewAssignment) return;
     invalidateManualSwapEvalCache();
+    const previewPointDetails = getPreviewPointDetails();
     seatAssignment = [...previewAssignment]; previewAssignment = null;
     const memo = pendingHistoryMemoOnCommit || '';
     pendingHistoryMemoOnCommit = null;
     const shuffleMeta = pendingHistoryShuffleMeta ? { ...pendingHistoryShuffleMeta } : null;
+    if (shuffleMeta) {
+        shuffleMeta.totalScore = coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
+            ?? coerceStoredTotalScore(shuffleMeta.totalScore);
+    }
     clearPendingHistoryShuffleMeta();
     previewInactiveSeatsBackup = null;
     clearManualSwapUndoStack();
@@ -6105,7 +6227,8 @@ function loadCurrentClassData() {
                 seedSource: h.seedSource === 'specified' || h.seedSource === 'automatic' ? h.seedSource : undefined,
                 algorithmVersion: typeof h.algorithmVersion === 'string' ? h.algorithmVersion : undefined,
                 isCheckerboard: h.isCheckerboard === true,
-                manuallyModified: h.manuallyModified === true
+                manuallyModified: h.manuallyModified === true,
+                totalScore: coerceStoredTotalScore(h.totalScore)
             }));
             if(data.colors) {
                 const colorFallback = DEFAULT_SEAT_COLORS;
@@ -6157,6 +6280,7 @@ function updateHistorySelect() {
         const memoInput = document.getElementById('history-memo-input');
         if (memoInput) memoInput.value = '';
         updateDeskTitleDisplay();
+        syncShuffleSeedControlsFromState();
         return;
     }
     histories.forEach((historyEntry, index) => {
@@ -6170,6 +6294,7 @@ function updateHistorySelect() {
     if (prevValue !== '' && histories[prevValue]) historySelect.value = prevValue;
     historySelect.dataset.appliedValue = historySelect.value;
     syncHistoryMemoInput();
+    syncShuffleSeedControlsFromState();
     updateDeskTitleDisplay();
 }
 

@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
 <link rel="stylesheet" href="styles.css">
 <style id="print-page-orientation-style" media="print">
@@ -430,7 +430,11 @@
                 <label for="shuffle-seed-input">再現用seed（任意）</label>
                 <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
                 <span id="shuffle-seed-help">探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。</span>
-                <span class="shuffle-seed-used">今回使用: <output id="shuffle-seed-used">—</output></span>
+                <div class="shuffle-seed-history" aria-label="最近の再現用seed">
+                    <span class="shuffle-seed-used">今回: <output id="shuffle-seed-used">—</output></span>
+                    <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-previous" onclick="applyRecentShuffleSeed(1)" disabled>前回: —</button>
+                    <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-before-previous" onclick="applyRecentShuffleSeed(2)" disabled>前々回: —</button>
+                </div>
             </div>
             <p class="local-data-note">データはこのパソコンのブラウザ内にのみ保存されます。定期的にバックアップ保存してください。</p>
             <label for="history-select" style="font-size:0.8em; font-weight:bold;">過去の配置を盤面に復元</label>
@@ -647,13 +651,14 @@
 
             <div class="cheat-sheet panel" style="background: #eef2f5; border: 2px solid var(--secondary); margin-bottom: 0;">
                 <h3 style="margin-top:0; border-bottom: 1px solid #ccc; padding-bottom:5px;">備考欄の記入例（必須ルール）</h3>
-                <div style="font-size:0.85em; margin-bottom:8px; color:#c0392b;"><b>※記法は <code>@(...)</code> を使用してください。混在記法はエラーになります。</b></div>
+                <div style="font-size:0.85em; margin-bottom:8px; color:#c0392b;"><b>※備考欄では <code>@(...)</code>（座席指定）と <code>NG(...)</code>（個別の隣接禁止）を使用できます。</b></div>
                 <b>座席指定</b>: <code>@(a1,b5)</code> (a1席かb5席に配置)<br>
                 <b>列指定</b>: <code>@(a,c,e)</code> (a/c/e列のどこかに配置)<br>
                 <b>行指定</b>: <code>@(1,4,6)</code> (1/4/6行のどこかに配置)<br>
+                <b>個別NG</b>: <code>NG(1205)</code> (1205番の生徒を8近傍に配置しない。座席指定との併用可)<br>
                 <div style="margin-top:8px; padding:8px; background:#fff; border:1px dashed #ccc; border-radius: 4px;">
                     <b style="color:#2980b9;">注意:</b><br>
-                    <span style="color:#555;">備考欄（@指定）・全体ルール・市松は必須ルールです。NGは全体ルールのみ有効です。机ペア相手の重複は優先ルールとして少なくなります。</span>
+                    <span style="color:#555;">備考欄（@指定・個別NG）・全体ルール・市松は必須ルールです。全体ルールのNGでは <code>*</code> を使ったグループ指定もできます。机ペア相手の重複は優先ルールとして少なくなります。</span>
                 </div>
             </div>
             
