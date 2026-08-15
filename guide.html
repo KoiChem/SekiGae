@@ -363,7 +363,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
                 <div>
                     <span class="step-tag">最初に必要</span>
                     <h3>名簿を貼り付ける</h3>
-                    <p>「名簿管理」を開き、Excelなどから「番号・氏名・かな・性別・属性1・属性2・備考」の7列をコピーして貼り付け、「表に反映」を押します。属性1・属性2には委員会や部活動などを入れておくのがおすすめです。備考は自由メモではなく、個人の座席指定を入力する欄です。指定がなければ空欄にします。</p>
+                    <p>「名簿管理」を開き、Excelなどから「番号・氏名・かな・性別・属性1・属性2・備考」の7列をコピーして貼り付け、「表に反映」を押します。属性1・属性2には委員会や部活動などを入れておくのがおすすめです。備考は自由メモではなく、個人の座席指定や個別NGを入力する欄です。指定がなければ空欄にします。</p>
                 </div>
             </li>
             <li class="step-card">
@@ -509,10 +509,11 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
             <div class="rule-example"><code>@(a1,b5)</code><span>個人の備考欄：a1席またはb5席に配置</span></div>
             <div class="rule-example"><code>@(a,c,e)</code><span>個人の備考欄：a・c・e列のいずれかに配置</span></div>
             <div class="rule-example"><code>@(1,4,6)</code><span>個人の備考欄：1・4・6行のいずれかに配置</span></div>
+            <div class="rule-example"><code>NG(1205)</code><span>個人の備考欄：1205番の生徒を8近傍に置かない（片方に書けば両者へ適用）</span></div>
             <div class="rule-example"><code>@25(a1,b5)</code><span>全体ルール：25で始まる番号をa1席またはb5席へ</span></div>
             <div class="rule-example"><code>NG(23*,24*)</code><span>全体ルール：23で始まる番号と24で始まる番号を8近傍に置かない</span></div>
         </div>
-        <p class="reference-note">全体ルールは1行に1つ入力します。NGの番号パターンでは <code>*</code> が任意の文字列を表します。記法エラーや指定の矛盾がある場合は、座席表へ進む前に確認が表示されます。</p>
+        <p class="reference-note">全体ルールは1行に1つ入力します。備考欄のNGは番号の完全一致、全体ルールのNGでは <code>*</code> が任意の文字列を表します。記法エラーや指定の矛盾がある場合は、座席表へ進む前に確認が表示されます。</p>
 
         <h3 class="subsection-title">公平化の設定</h3>
         <div class="rule-table-wrap">
