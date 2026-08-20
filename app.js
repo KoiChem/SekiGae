@@ -130,6 +130,8 @@ function createShuffleRandomStreams(seed) {
 const SAMPLE_MODE = new URLSearchParams(window.location.search).get('sample') === '1';
 const PREFIX = SAMPLE_MODE ? 'SekigaeKun_sample_v6_' : 'SekigaeKun_v6_';
 const SAMPLE_BACKUP_URL = './meibo_sample.json';
+/** クラス・バックアップとは独立した、この端末での画面表示の好み。 */
+const UI_LAYOUT_STORAGE_KEY = 'SekiGae_ui_layout';
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
 const SHUFFLE_ALGORITHM_VERSION = 'seed-v7-focused-reheat-repair';
@@ -1039,6 +1041,43 @@ function updateMainViewToggleUi() {
     if (btn) btn.textContent = isStudentView ? '視点: 生徒側' : '視点: 教員側';
 }
 
+function normalizeUiLayoutMode(value) {
+    return value === 'portrait' ? 'portrait' : 'landscape';
+}
+
+function applyUiLayoutMode(value, shouldPersist = false) {
+    const mode = normalizeUiLayoutMode(value);
+    const isLandscape = mode === 'landscape';
+    document.body.classList.toggle('ui-layout-landscape', isLandscape);
+    document.body.classList.toggle('ui-layout-portrait', !isLandscape);
+
+    const button = document.getElementById('btn-ui-layout-toggle');
+    if (button) {
+        button.textContent = `画面: ${isLandscape ? '横' : '縦'}`;
+        button.setAttribute('aria-pressed', isLandscape ? 'true' : 'false');
+        button.setAttribute('aria-label', isLandscape
+            ? '現在は横画面レイアウトです。縦画面レイアウトへ切り替えます'
+            : '現在は縦画面レイアウトです。横画面レイアウトへ切り替えます');
+    }
+    if (shouldPersist) localStorage.setItem(UI_LAYOUT_STORAGE_KEY, mode);
+
+    if (!document.body.classList.contains('print-mode')) {
+        scheduleFitDeskClassName();
+        autoFitText();
+    }
+}
+
+function loadUiLayoutMode() {
+    let stored = null;
+    try { stored = localStorage.getItem(UI_LAYOUT_STORAGE_KEY); } catch (error) {}
+    applyUiLayoutMode(stored, false);
+}
+
+function toggleUiLayoutMode() {
+    const next = document.body.classList.contains('ui-layout-landscape') ? 'portrait' : 'landscape';
+    applyUiLayoutMode(next, true);
+}
+
 // 盤面のDOM参照を統一し、同じquerySelector文字列の重複を減らす。
 function getSeatElement(index) {
     return document.querySelector(`.seat[data-index='${index}']`);
@@ -1314,6 +1353,7 @@ function scheduleAppViewportHeightSync() {
 
 function initializeApp() {
     syncAppViewportHeight();
+    loadUiLayoutMode();
     initSeatLayoutTable();
     initColorPaletteUI();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
@@ -2639,10 +2679,12 @@ function fitPrintGridLayout(grid, rows, cols) {
     const availableH = Math.max(50, classroomRect.height - deskRect.height - (parseFloat(classStyle.paddingTop) || 0) - (parseFloat(classStyle.paddingBottom) || 0) - gapY);
 
     if (printOrientation === 'portrait') {
-        // A4縦は6列を基準に机を4:3で固定し、使用行・列の数によって伸縮させない。
-        // 行間はCSSで0mmとし、残る高さは後方側の余白として残す。
+        // A4縦は6列を基準に机を4:3で固定する。幅だけでなく、教卓・余白を
+        // 除いた高さも上限にするため、下側が印刷領域からはみ出さない。
         const fixedCols = NUM_COLS;
-        const cellW = Math.max(1, (availableW - (fixedCols - 1) * gapX) / fixedCols);
+        const maxCellWByWidth = (availableW - (fixedCols - 1) * gapX) / fixedCols;
+        const maxCellHByHeight = (availableH - (rows - 1) * gapY) / rows;
+        const cellW = Math.max(1, Math.min(maxCellWByWidth, maxCellHByHeight / 0.75));
         const cellH = cellW * 0.75;
         grid.style.width = `${cols * cellW + (cols - 1) * gapX}px`;
         grid.style.height = `${rows * cellH + (rows - 1) * gapY}px`;

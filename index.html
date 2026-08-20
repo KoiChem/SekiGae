@@ -9,7 +9,7 @@
 @page { size: A4 landscape; margin: 10mm; }
 </style>
 </head>
-<body class="font-gothic">
+<body class="font-gothic ui-layout-landscape">
 
 <div id="sample-mode-modal" class="modal-overlay sample-mode-modal" aria-modal="true" role="dialog" aria-labelledby="sample-mode-title">
     <div class="modal-content sample-mode-modal-content">
@@ -280,6 +280,7 @@
     <button class="tab-btn" onclick="switchTab('tab-students', event)">名簿管理</button>
     <div class="tab-utility-actions" aria-label="使い方、表示と印刷">
         <a class="btn btn-outline tab-utility-btn" href="./guide.html">使い方</a>
+        <button type="button" class="btn btn-outline tab-utility-btn" id="btn-ui-layout-toggle" onclick="toggleUiLayoutMode()" aria-pressed="true">画面: 横</button>
         <button class="btn btn-outline tab-utility-btn" id="btn-main-view-toggle" onclick="toggleView()">視点: 教員側</button>
         <button class="btn btn-outline tab-utility-btn" onclick="togglePrintMode()">印刷プレビュー</button>
     </div>
