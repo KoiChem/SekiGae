@@ -50,6 +50,37 @@ function coerceStoredTotalScore(raw) {
     return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+/** 確定前を含む、再現用seedの実行履歴は今回〜3回前まで保持する。 */
+const RECENT_SHUFFLE_RUN_LIMIT = 4;
+
+function coerceRecentShuffleRun(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const seed = coerceStoredShuffleSeed(raw.seed);
+    if (seed == null) return null;
+    return {
+        seed,
+        totalScore: coerceStoredTotalScore(raw.totalScore),
+        seedSource: raw.seedSource === 'specified' || raw.seedSource === 'automatic' ? raw.seedSource : undefined,
+        algorithmVersion: typeof raw.algorithmVersion === 'string' ? raw.algorithmVersion : undefined,
+        manuallyModified: raw.manuallyModified === true,
+        confirmed: raw.confirmed === true
+    };
+}
+
+/** 旧データは確定済み座席履歴からseed表示用の履歴を一度だけ補完する。 */
+function loadRecentShuffleRuns(raw, legacyHistories, legacyLastUsedSeed) {
+    if (Array.isArray(raw)) {
+        return raw.map(coerceRecentShuffleRun).filter(Boolean).slice(0, RECENT_SHUFFLE_RUN_LIMIT);
+    }
+    const migrated = (legacyHistories || [])
+        .map(h => coerceRecentShuffleRun(h))
+        .filter(Boolean)
+        .slice(0, RECENT_SHUFFLE_RUN_LIMIT);
+    if (migrated.length > 0) return migrated;
+    const legacySeed = coerceStoredShuffleSeed(legacyLastUsedSeed);
+    return legacySeed == null ? [] : [{ seed: legacySeed, totalScore: null }];
+}
+
 /** 自動seedは暗号学的乱数を優先し、非対応環境では時刻由来の値へ退避する。 */
 function createAutomaticShuffleSeed() {
     if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
@@ -880,6 +911,8 @@ let lastShuffleLog = null;
 /** 入力欄は任意指定、lastUsed は直近の実行seed。 */
 let shuffleSeedInput = '';
 let lastUsedShuffleSeed = null;
+/** 座席の確定有無にかかわらず保持する、最新4回のseed実行履歴。 */
+let recentShuffleRuns = [];
 let lastBackupAt = '';
 /** 実行中のseed情報と、プレビューを確定したとき履歴へ渡す情報。 */
 let activeShuffleRun = null;
@@ -906,17 +939,28 @@ function getShuffleSeedInputElement() {
     return document.getElementById('shuffle-seed-input');
 }
 
+function addRecentShuffleRun(run) {
+    const entry = coerceRecentShuffleRun(run);
+    if (!entry) return;
+    recentShuffleRuns.unshift(entry);
+    recentShuffleRuns = recentShuffleRuns.slice(0, RECENT_SHUFFLE_RUN_LIMIT);
+}
+
+function updateLatestRecentShuffleRun(totalScore, confirmed) {
+    if (!recentShuffleRuns[0]) return;
+    const score = coerceStoredTotalScore(totalScore);
+    if (score != null) recentShuffleRuns[0].totalScore = score;
+    if (confirmed === true) recentShuffleRuns[0].confirmed = true;
+}
+
 function getRecentShuffleResults(previewPointDetails) {
-    const previewResult = previewAssignment && pendingHistoryShuffleMeta
-        ? {
-            seed: pendingHistoryShuffleMeta.seed,
-            totalScore: coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
-                ?? coerceStoredTotalScore(pendingHistoryShuffleMeta.totalScore)
-        }
-        : null;
-    if (previewResult) return [previewResult, histories[0] || null, histories[1] || null];
-    if (histories.length > 0) return [histories[0], histories[1] || null, histories[2] || null];
-    return [lastUsedShuffleSeed == null ? null : { seed: lastUsedShuffleSeed, totalScore: null }, null, null];
+    const results = recentShuffleRuns.slice(0, RECENT_SHUFFLE_RUN_LIMIT).map(entry => ({ ...entry }));
+    if (previewAssignment && pendingHistoryShuffleMeta && results[0]
+        && results[0].seed === pendingHistoryShuffleMeta.seed) {
+        results[0].totalScore = coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
+            ?? results[0].totalScore;
+    }
+    return results;
 }
 
 function formatShuffleResult(result) {
@@ -934,7 +978,8 @@ function syncShuffleSeedControlsFromState(previewPointDetails) {
 
     [
         ['shuffle-seed-previous', '前回', results[1]],
-        ['shuffle-seed-before-previous', '前々回', results[2]]
+        ['shuffle-seed-before-previous', '前々回', results[2]],
+        ['shuffle-seed-three-previous', '3回前', results[3]]
     ].forEach(([id, label, result]) => {
         const button = document.getElementById(id);
         if (!button) return;
@@ -943,7 +988,7 @@ function syncShuffleSeedControlsFromState(previewPointDetails) {
     });
 }
 
-/** 前回・前々回ボタンはseed入力欄へ値を入れるだけで、シャッフルは実行しない。 */
+/** 過去のseedボタンは入力欄へ値を入れるだけで、シャッフルは実行しない。 */
 function applyRecentShuffleSeed(index) {
     const result = getRecentShuffleResults()[index];
     if (!result || result.seed == null) return;
@@ -3471,7 +3516,7 @@ function finalizeShuffleSuccess(bestAssign, finalScore) {
     previewAssignment = bestAssign;
     clearManualSwapUndoStack();
     if (activeShuffleRun) {
-        pendingHistoryShuffleMeta = {
+        const shuffleRunMeta = {
             seed: activeShuffleRun.seed,
             seedSource: activeShuffleRun.seedSource,
             algorithmVersion: activeShuffleRun.algorithmVersion,
@@ -3479,6 +3524,10 @@ function finalizeShuffleSuccess(bestAssign, finalScore) {
             manuallyModified: false,
             totalScore: coerceStoredTotalScore(finalScore)
         };
+        pendingHistoryShuffleMeta = { ...shuffleRunMeta };
+        addRecentShuffleRun({ ...shuffleRunMeta, confirmed: false });
+        // 未確定の結果も再読み込み・バックアップ後にseedを再利用できるよう保存する。
+        saveCurrentClassData();
     }
     activeShuffleRun = null;
     syncShuffleSeedControlsFromState({ totalScore: finalScore });
@@ -5226,6 +5275,7 @@ function commitSeats() {
     if (shuffleMeta) {
         shuffleMeta.totalScore = coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
             ?? coerceStoredTotalScore(shuffleMeta.totalScore);
+        updateLatestRecentShuffleRun(shuffleMeta.totalScore, true);
     }
     clearPendingHistoryShuffleMeta();
     previewInactiveSeatsBackup = null;
@@ -6169,7 +6219,7 @@ function saveCurrentClassData() {
         ...exportFairnessSettings(),
         ...exportSoftScoreSettings(),
         ...exportEdgeSettings(),
-        inactiveSeats: Array.from(inactiveSeats), assignment: seatAssignment, histories: histories, colors: colors,
+        inactiveSeats: Array.from(inactiveSeats), assignment: seatAssignment, histories: histories, recentShuffleRuns: recentShuffleRuns, colors: colors,
         shuffleSeedInput: shuffleSeedInput,
         lastUsedShuffleSeed: lastUsedShuffleSeed,
         lastBackupAt: lastBackupAt,
@@ -6230,6 +6280,7 @@ function loadCurrentClassData() {
                 manuallyModified: h.manuallyModified === true,
                 totalScore: coerceStoredTotalScore(h.totalScore)
             }));
+            recentShuffleRuns = loadRecentShuffleRuns(data.recentShuffleRuns, histories, lastUsedShuffleSeed);
             if(data.colors) {
                 const colorFallback = DEFAULT_SEAT_COLORS;
                 for(let i=1;i<=6;i++) {
@@ -6252,7 +6303,7 @@ function loadCurrentClassData() {
             }
         } catch(e) { console.error("データ読み込みエラー", e); }
     } else {
-        currentStudents = []; inactiveSeats.clear(); seatAssignment = new Array(TOTAL_SEATS).fill(null); histories = [];
+        currentStudents = []; inactiveSeats.clear(); seatAssignment = new Array(TOTAL_SEATS).fill(null); histories = []; recentShuffleRuns = [];
         printInactiveMode = 'hide';
         shuffleSeedInput = '';
         lastUsedShuffleSeed = null;
@@ -6381,9 +6432,10 @@ function deleteSelectedHistory() {
     }
 }
 function clearAllHistories() {
-    if(histories.length === 0) return alert("削除する履歴がありません。");
-    if(confirm("【確認】過去の座席履歴をすべて削除します。\nペアの重複制限やローテーション制限もクリアされます。\n（新学期や席替えルールのリセットに最適です）\nよろしいですか？")) {
+    if(histories.length === 0 && recentShuffleRuns.length === 0) return alert("削除する履歴がありません。");
+    if(confirm("【確認】過去の座席履歴と再現用seedの実行履歴をすべて削除します。\nペアの重複制限やローテーション制限もクリアされます。\n（新学期や席替えルールのリセットに最適です）\nよろしいですか？")) {
         histories = [];
+        recentShuffleRuns = [];
         invalidateManualSwapEvalCache();
         saveCurrentClassData(); updateHistorySelect();
         applyHistorySelectionToBoard();

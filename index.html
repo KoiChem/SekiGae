@@ -429,11 +429,12 @@
             <div class="shuffle-seed-row">
                 <label for="shuffle-seed-input">再現用seed（任意）</label>
                 <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
-                <span id="shuffle-seed-help">探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。</span>
+                <span id="shuffle-seed-help">探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。未確定の実行も今回〜3回前まで表示します。</span>
                 <div class="shuffle-seed-history" aria-label="最近の再現用seed">
                     <span class="shuffle-seed-used">今回: <output id="shuffle-seed-used">—</output></span>
                     <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-previous" onclick="applyRecentShuffleSeed(1)" disabled>前回: —</button>
                     <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-before-previous" onclick="applyRecentShuffleSeed(2)" disabled>前々回: —</button>
+                    <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-three-previous" onclick="applyRecentShuffleSeed(3)" disabled>3回前: —</button>
                 </div>
             </div>
             <p class="local-data-note">データはこのパソコンのブラウザ内にのみ保存されます。定期的にバックアップ保存してください。</p>
