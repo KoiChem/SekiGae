@@ -301,6 +301,12 @@
                     <span style="font-size: 0.85em; color: #7f8c8d;">有効座席:</span> <span id="counter-seats" style="font-size: 1.1em;">42</span> 席
                 </div>
             </div>
+            <div class="seat-text-zoom-controls" role="group" aria-label="座席文字の大きさ">
+                <span class="seat-text-zoom-label">座席文字</span>
+                <button type="button" class="btn btn-outline seat-text-zoom-btn" id="btn-seat-text-decrease" onclick="adjustSeatTextScale(-1)" aria-label="座席文字を小さくする">−</button>
+                <output class="seat-text-zoom-value" id="seat-text-zoom-value" aria-live="polite">100%</output>
+                <button type="button" class="btn btn-outline seat-text-zoom-btn" id="btn-seat-text-increase" onclick="adjustSeatTextScale(1)" aria-label="座席文字を大きくする">＋</button>
+            </div>
         </div>
 
         <div class="action-bar-bottom">

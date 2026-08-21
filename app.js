@@ -132,6 +132,9 @@ const PREFIX = SAMPLE_MODE ? 'SekigaeKun_sample_v6_' : 'SekigaeKun_v6_';
 const SAMPLE_BACKUP_URL = './meibo_sample.json';
 /** クラス・バックアップとは独立した、この端末での画面表示の好み。 */
 const UI_LAYOUT_STORAGE_KEY = 'SekiGae_ui_layout';
+const SEAT_TEXT_SCALE_STORAGE_KEY = 'SekiGae_seat_text_scale';
+const SEAT_TEXT_SCALE_STEPS = Object.freeze([0.85, 1, 1.15, 1.3]);
+let seatTextScale = 1;
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
 const SHUFFLE_ALGORITHM_VERSION = 'seed-v7-focused-reheat-repair';
@@ -1078,6 +1081,52 @@ function toggleUiLayoutMode() {
     applyUiLayoutMode(next, true);
 }
 
+function normalizeSeatTextScale(value) {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed)) return 1;
+    return SEAT_TEXT_SCALE_STEPS.reduce((closest, candidate) => (
+        Math.abs(candidate - parsed) < Math.abs(closest - parsed) ? candidate : closest
+    ), SEAT_TEXT_SCALE_STEPS[0]);
+}
+
+function updateSeatTextScaleUi() {
+    const currentIndex = SEAT_TEXT_SCALE_STEPS.indexOf(seatTextScale);
+    const value = document.getElementById('seat-text-zoom-value');
+    const decrease = document.getElementById('btn-seat-text-decrease');
+    const increase = document.getElementById('btn-seat-text-increase');
+    if (value) value.textContent = `${Math.round(seatTextScale * 100)}%`;
+    if (decrease) {
+        decrease.disabled = currentIndex <= 0;
+        decrease.setAttribute('aria-label', `座席文字を小さくする（現在 ${Math.round(seatTextScale * 100)}%）`);
+    }
+    if (increase) {
+        increase.disabled = currentIndex >= SEAT_TEXT_SCALE_STEPS.length - 1;
+        increase.setAttribute('aria-label', `座席文字を大きくする（現在 ${Math.round(seatTextScale * 100)}%）`);
+    }
+}
+
+function applySeatTextScale(value, shouldPersist = false) {
+    seatTextScale = normalizeSeatTextScale(value);
+    updateSeatTextScaleUi();
+    if (shouldPersist) {
+        try { localStorage.setItem(SEAT_TEXT_SCALE_STORAGE_KEY, String(seatTextScale)); } catch (error) {}
+    }
+    if (!document.body.classList.contains('print-mode')) autoFitText();
+}
+
+function loadSeatTextScale() {
+    let stored = null;
+    try { stored = localStorage.getItem(SEAT_TEXT_SCALE_STORAGE_KEY); } catch (error) {}
+    applySeatTextScale(stored, false);
+}
+
+function adjustSeatTextScale(direction) {
+    const currentIndex = Math.max(0, SEAT_TEXT_SCALE_STEPS.indexOf(seatTextScale));
+    const nextIndex = Math.max(0, Math.min(SEAT_TEXT_SCALE_STEPS.length - 1, currentIndex + (direction < 0 ? -1 : 1)));
+    if (nextIndex === currentIndex) return;
+    applySeatTextScale(SEAT_TEXT_SCALE_STEPS[nextIndex], true);
+}
+
 // 盤面のDOM参照を統一し、同じquerySelector文字列の重複を減らす。
 function getSeatElement(index) {
     return document.querySelector(`.seat[data-index='${index}']`);
@@ -1354,6 +1403,7 @@ function scheduleAppViewportHeightSync() {
 function initializeApp() {
     syncAppViewportHeight();
     loadUiLayoutMode();
+    loadSeatTextScale();
     initSeatLayoutTable();
     initColorPaletteUI();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
@@ -1578,7 +1628,7 @@ function computeRowHiPx(key, globalNRef) {
  * Canvas 計測で全席分を解析的に計算するため二分探索を使わない。
  * 1 席分の row サイズは外から渡してもらう（全席同レイアウト前提でサンプリング）。
  */
-function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily) {
+function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily, textScale = 1) {
     if (!contentEl) return;
     const rows = contentEl.querySelectorAll('.seat-fixed-row');
     if (!rows.length) return;
@@ -1590,7 +1640,7 @@ function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily) {
         const sz = (rowSizeByKey && rowSizeByKey[key]) || getRowContentBox(row);
         if (!sz || sz.w <= 0 || sz.h <= 0) return;
 
-        const hiPx = computeRowHiPx(key, globalNRef);
+        const hiPx = computeRowHiPx(key, globalNRef) * Math.max(SEAT_FIT_EPS_PX, Number.isFinite(textScale) ? textScale : 1);
         const text = textEl.textContent || '';
         const ff = getComputedStyle(textEl).fontFamily || fontFamily || getComputedStyle(contentEl).fontFamily;
         const naturalPx = computeMaxFontPxByCanvas(text, sz.w, sz.h, ff, 'bold');
@@ -5299,7 +5349,7 @@ function autoFitText() {
             const sample = document.querySelector('#seat-grid .seat-content');
             const fontFamily = sample ? getComputedStyle(sample).fontFamily : null;
             document.querySelectorAll('.seat-content').forEach(el => {
-                fitFixedSeatRows(el, nRef, rowSizes, fontFamily);
+                fitFixedSeatRows(el, nRef, rowSizes, fontFamily, seatTextScale);
                 el.classList.add('is-fitted');
             });
         });
