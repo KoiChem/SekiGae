@@ -197,6 +197,7 @@ const SEAT_PROBE_FONT_PX = 100;
 const SEAT_FIT_EPS_PX = 0.25;
 /** 行の line-height（CSSと一致させる） */
 const SEAT_ROW_LINE_HEIGHT = 1.05;
+const LANDSCAPE_SCREEN_SEAT_ROW_LINE_HEIGHT = 1;
 /** bold のはみ出し・サブピクセル丸めを吸収する横方向の安全マージン（px） */
 const SEAT_FIT_SAFETY_PX = 1.5;
 /** 氏名の基準フォントを決める参照文字列（全角5文字） */
@@ -1053,6 +1054,7 @@ function applyUiLayoutMode(value, shouldPersist = false) {
     const isLandscape = mode === 'landscape';
     document.body.classList.toggle('ui-layout-landscape', isLandscape);
     document.body.classList.toggle('ui-layout-portrait', !isLandscape);
+    moveMainStatusControls(isLandscape);
 
     const button = document.getElementById('btn-ui-layout-toggle');
     if (button) {
@@ -1079,6 +1081,17 @@ function loadUiLayoutMode() {
 function toggleUiLayoutMode() {
     const next = document.body.classList.contains('ui-layout-landscape') ? 'portrait' : 'landscape';
     applyUiLayoutMode(next, true);
+}
+
+/** 横画面では同じクラス選択・人数表示を設定パネル上部へ移す（DOMを複製しない）。 */
+function moveMainStatusControls(isLandscape) {
+    const controls = document.getElementById('main-status-controls');
+    const target = isLandscape
+        ? document.getElementById('settings-status-slot')
+        : document.querySelector('#tab-main .action-bar-top');
+    if (!controls || !target || controls.parentElement === target) return;
+    if (isLandscape) target.appendChild(controls);
+    else target.insertBefore(controls, target.firstChild);
 }
 
 function normalizeSeatTextScale(value) {
@@ -1566,14 +1579,15 @@ function buildFixedSeatContentHtml(student, cfg, forPrint) {
  * w は「コンテンツ幅（行 padding を除いた値）」を渡すこと。
  * bold の glyph はみ出し / サブピクセル丸めを吸収するため横方向に SEAT_FIT_SAFETY_PX を引いて計算する。
  */
-function computeMaxFontPxByCanvas(text, w, h, fontFamily, fontWeight) {
+function computeMaxFontPxByCanvas(text, w, h, fontFamily, fontWeight, lineHeight = SEAT_ROW_LINE_HEIGHT) {
     if (!text || w <= 0 || h <= 0) return SEAT_FIT_EPS_PX;
     const ctx = getSeatMeasureCtx();
     ctx.font = `${fontWeight || 'bold'} ${SEAT_PROBE_FONT_PX}px ${fontFamily}`;
     const measuredW = ctx.measureText(text).width || 1;
     const safeW = Math.max(1, w - SEAT_FIT_SAFETY_PX);
     const fontByWidth = (safeW / measuredW) * SEAT_PROBE_FONT_PX;
-    const fontByHeight = h / SEAT_ROW_LINE_HEIGHT;
+    const safeLineHeight = Math.max(1, Number.isFinite(lineHeight) ? lineHeight : SEAT_ROW_LINE_HEIGHT);
+    const fontByHeight = h / safeLineHeight;
     return Math.max(SEAT_FIT_EPS_PX, Math.min(fontByWidth, fontByHeight));
 }
 
@@ -1592,22 +1606,28 @@ function getRowContentBox(row) {
  * 現在のレイアウトで参照文字列が収まる最大 px を、サンプル1席の氏名行で求めて返す。
  * 全座席は同サイズなので 1 回の計測で十分。
  */
-function computeGlobalNameRefPx(rowSelector) {
+function computeGlobalNameRefPx(rowSelector, lineHeight = SEAT_ROW_LINE_HEIGHT) {
     const sample = document.querySelector(rowSelector);
     if (!sample) return null;
     const box = getRowContentBox(sample);
     if (box.w <= 0 || box.h <= 0) return null;
     const fontFamily = getComputedStyle(sample).fontFamily;
-    const px = computeMaxFontPxByCanvas(SEAT_NAME_PROBE_TEXT, box.w, box.h, fontFamily, 'bold');
+    const px = computeMaxFontPxByCanvas(SEAT_NAME_PROBE_TEXT, box.w, box.h, fontFamily, 'bold', lineHeight);
     return Math.min(px, SEAT_SIZE_MAX_PX.L);
 }
 
 function computeMainGridNameRefPx() {
-    return computeGlobalNameRefPx('#seat-grid .seat-content .seat-fixed-row[data-row-key="name"]');
+    return computeGlobalNameRefPx('#seat-grid .seat-content .seat-fixed-row[data-row-key="name"]', getMainSeatRowLineHeight());
 }
 
 function computePrintGridNameRefPx() {
     return computeGlobalNameRefPx('#print-root .print-seat-content .seat-fixed-row[data-row-key="name"]');
+}
+
+function getMainSeatRowLineHeight() {
+    return document.body.classList.contains('ui-layout-landscape')
+        ? LANDSCAPE_SCREEN_SEAT_ROW_LINE_HEIGHT
+        : SEAT_ROW_LINE_HEIGHT;
 }
 
 /** key ごとの上限 px（globalNRef ベースの比率 × 絶対上限） */
@@ -1628,7 +1648,7 @@ function computeRowHiPx(key, globalNRef) {
  * Canvas 計測で全席分を解析的に計算するため二分探索を使わない。
  * 1 席分の row サイズは外から渡してもらう（全席同レイアウト前提でサンプリング）。
  */
-function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily, textScale = 1) {
+function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily, textScale = 1, lineHeight = SEAT_ROW_LINE_HEIGHT) {
     if (!contentEl) return;
     const rows = contentEl.querySelectorAll('.seat-fixed-row');
     if (!rows.length) return;
@@ -1643,7 +1663,7 @@ function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily, textS
         const hiPx = computeRowHiPx(key, globalNRef) * Math.max(SEAT_FIT_EPS_PX, Number.isFinite(textScale) ? textScale : 1);
         const text = textEl.textContent || '';
         const ff = getComputedStyle(textEl).fontFamily || fontFamily || getComputedStyle(contentEl).fontFamily;
-        const naturalPx = computeMaxFontPxByCanvas(text, sz.w, sz.h, ff, 'bold');
+        const naturalPx = computeMaxFontPxByCanvas(text, sz.w, sz.h, ff, 'bold', lineHeight);
         const finalPx = Math.max(SEAT_FIT_EPS_PX, Math.min(naturalPx, hiPx));
         textEl.style.fontSize = `${finalPx}px`;
     });
@@ -5348,8 +5368,9 @@ function autoFitText() {
             const rowSizes = sampleRowSizesByKey('#seat-grid .seat-content');
             const sample = document.querySelector('#seat-grid .seat-content');
             const fontFamily = sample ? getComputedStyle(sample).fontFamily : null;
+            const lineHeight = getMainSeatRowLineHeight();
             document.querySelectorAll('.seat-content').forEach(el => {
-                fitFixedSeatRows(el, nRef, rowSizes, fontFamily, seatTextScale);
+                fitFixedSeatRows(el, nRef, rowSizes, fontFamily, seatTextScale, lineHeight);
                 el.classList.add('is-fitted');
             });
         });

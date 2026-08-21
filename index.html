@@ -291,12 +291,9 @@
     
     <div class="action-bar no-print">
         <div class="action-bar-top">
-            <div class="flex-row" style="gap:12px;">
-                <div style="display:flex; flex-direction:column;">
-                    <label for="class-select" style="font-size:0.75em; font-weight:bold; color:#555;">対象クラス</label>
-                    <select id="class-select" onchange="switchClass('class-select')" style="font-weight:bold; font-size:1.0em; min-width:160px;"></select>
-                </div>
-                <div style="background: #fff; padding: 5px 15px; border-radius: 5px; border: 1px solid #ddd; font-weight: bold; color: #2c3e50;">
+            <div class="main-status-controls" id="main-status-controls">
+                <select id="class-select" onchange="switchClass('class-select')" aria-label="対象クラス" class="main-class-select"></select>
+                <div class="main-class-summary">
                     <span style="font-size: 0.85em; color: #7f8c8d;">生徒数:</span> <span id="counter-students" style="font-size: 1.1em;">0</span> 名<span id="counter-gender-wrap" style="display:none;"> &nbsp;|&nbsp; <span style="font-size: 0.85em; color: #7f8c8d;">男子</span> <span id="counter-boys" style="font-size: 1.05em;">0</span> &nbsp;<span style="font-size: 0.85em; color: #7f8c8d;">女子</span> <span id="counter-girls" style="font-size: 1.05em;">0</span></span> &nbsp;|&nbsp;
                     <span style="font-size: 0.85em; color: #7f8c8d;">有効座席:</span> <span id="counter-seats" style="font-size: 1.1em;">42</span> 席
                 </div>
@@ -341,6 +338,7 @@
     </div>
 
     <div class="settings-bottom no-print">
+        <div class="settings-status-slot" id="settings-status-slot"></div>
         <div class="panel">
             <div class="flex-row" style="justify-content: space-between; border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 8px;">
                 <h2 style="border:none; margin:0; width:auto;">座席内レイアウト設定</h2>
@@ -362,7 +360,6 @@
             <input type="hidden" id="layout-rules" value="">
             
             <h3 style="margin-top:8px;">色番号設定 (1〜6)</h3>
-            <p class="color-palette-help">掲示物にも使いやすい、やわらかな発色と読みやすさを両立した24色（8列×3行）です。黒〜グレーは4色から選べます。</p>
             <div id="color-palette-group" class="color-palette-group">
                 <div class="color-palette-row">
                     <span class="color-palette-label">1</span>
@@ -477,10 +474,7 @@
             <div class="panel" style="margin-bottom: 10px;">
                 <div class="flex-row" style="justify-content: space-between; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 5px;">
                     <div class="flex-row" style="row-gap: 6px;">
-                        <div style="display:flex; flex-direction:column;">
-                            <label for="class-select-students" style="font-size:0.75em; font-weight:bold; color:#555;">対象クラス</label>
-                            <select id="class-select-students" onchange="switchClass('class-select-students')" style="font-weight:bold; font-size:1.0em; width:160px;"></select>
-                        </div>
+                        <select id="class-select-students" onchange="switchClass('class-select-students')" aria-label="対象クラス" style="font-weight:bold; font-size:1.0em; width:160px;"></select>
                         <h2 style="border:none; margin:0; padding:0; width:auto;"><label for="class-name-input">クラス名:</label></h2>
                         <input type="text" id="class-name-input" style="font-size: 1.2em; font-weight: bold; width: 200px;" placeholder="例: 1年A組">
                         <button class="btn" onclick="saveClassName()">保存</button>
