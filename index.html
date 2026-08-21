@@ -227,6 +227,23 @@
     </div>
 </div>
 
+<div id="shuffle-seed-help-modal" class="modal-overlay shuffle-seed-help-modal" style="display: none;" aria-modal="true" role="dialog" aria-labelledby="shuffle-seed-help-title" onclick="if(event.target === this) closeShuffleSeedHelpModal()">
+    <div class="modal-content shuffle-seed-help-modal-content">
+        <h2 id="shuffle-seed-help-title">再現性seedについて</h2>
+        <div class="shuffle-seed-help-body">
+            <h3>seedとは</h3>
+            <p>シャッフルで候補を試す順番など、探索の初期条件を決める番号です。同じseedを使うと、現在の名簿・座席・ルール設定に対して、同じ探索の初期条件からシャッフルを始めます。</p>
+            <p>探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。未確定の実行も今回〜3回前まで表示します。</p>
+            <h3>過去のseedでもう一度試す</h3>
+            <p>「前回」「前々回」「3回前」を押すと、その番号が入力欄に入ります。記録した番号を直接入力することもできます。</p>
+            <p>入力欄に過去のseedを入力して「シャッフル」を押すと、同じseedで探索の初期条件を再現してシャッフルを実施できます。名簿・座席・ルール設定が以前と異なる場合は、以前と同じ配置にはなりません。</p>
+        </div>
+        <div class="shuffle-seed-help-modal-actions">
+            <button type="button" class="btn btn-outline" id="shuffle-seed-help-close" onclick="closeShuffleSeedHelpModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
 <div id="seat-track-modal" class="modal-overlay" onclick="if(event.target === this) closeSeatTrackModal()">
     <div class="modal-content seat-track-modal-content">
         <h2 style="border:none; font-size:1.15em; color: #2c3e50; margin-bottom: 8px;">座席追跡</h2>
@@ -443,9 +460,11 @@
         <div class="panel">
             <h2>データ・履歴管理</h2>
             <div class="shuffle-seed-row">
-                <label for="shuffle-seed-input">再現用seed（任意）</label>
-                <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成" aria-describedby="shuffle-seed-help">
-                <span id="shuffle-seed-help">探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。未確定の実行も今回〜3回前まで表示します。</span>
+                <div class="shuffle-seed-label-group">
+                    <label for="shuffle-seed-input">再現性seed（任意）</label>
+                    <button type="button" class="shuffle-seed-help-button" onclick="openShuffleSeedHelpModal()" aria-label="再現性seedの説明を開く" aria-haspopup="dialog" aria-controls="shuffle-seed-help-modal">？</button>
+                </div>
+                <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成">
                 <div class="shuffle-seed-history" aria-label="最近の再現用seed">
                     <span class="shuffle-seed-used">今回: <output id="shuffle-seed-used">—</output></span>
                     <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-previous" onclick="applyRecentShuffleSeed(1)" disabled>前回: —</button>

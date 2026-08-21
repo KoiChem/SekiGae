@@ -5012,6 +5012,33 @@ function toggleLogDetail(id, btnEl) {
 }
 function closeLogModal() { document.getElementById('log-modal').style.display = 'none'; }
 
+let shuffleSeedHelpEscListener = null;
+
+function openShuffleSeedHelpModal() {
+    const modal = document.getElementById('shuffle-seed-help-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    const closeButton = document.getElementById('shuffle-seed-help-close');
+    if (closeButton) closeButton.focus();
+    if (!shuffleSeedHelpEscListener) {
+        shuffleSeedHelpEscListener = event => {
+            if (event.key === 'Escape' || event.key === 'Esc') closeShuffleSeedHelpModal();
+        };
+        document.addEventListener('keydown', shuffleSeedHelpEscListener);
+    }
+}
+
+function closeShuffleSeedHelpModal() {
+    const modal = document.getElementById('shuffle-seed-help-modal');
+    if (modal) modal.style.display = 'none';
+    if (shuffleSeedHelpEscListener) {
+        document.removeEventListener('keydown', shuffleSeedHelpEscListener);
+        shuffleSeedHelpEscListener = null;
+    }
+    const trigger = document.querySelector('.shuffle-seed-help-button');
+    if (trigger) trigger.focus();
+}
+
 // --- 市松シャッフル: 左上席の性別（オフセット）を選ぶモーダル ---
 
 /**

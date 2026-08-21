@@ -773,14 +773,23 @@ body.ui-layout-landscape .settings-bottom .panel { min-width: 0; }
 body.ui-layout-landscape .settings-bottom #history-select { min-width: 0; width: 100%; font-size: 0.78em; }
 body.ui-layout-landscape .settings-bottom label[for="history-select"] { display: block; overflow-wrap: anywhere; }
 .shuffle-seed-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; padding: 7px 10px; border: 1px solid #d7dee5; border-radius: 5px; background: #f8fafc; font-size: 0.82em; color: #475569; }
+.shuffle-seed-label-group { display: inline-flex; align-items: center; gap: 5px; }
 .shuffle-seed-row label { font-weight: bold; color: var(--primary); }
+.shuffle-seed-help-button { display: inline-flex; align-items: center; justify-content: center; width: 21px; height: 21px; padding: 0; border: 1px solid #64748b; border-radius: 50%; background: #fff; color: #334155; font: inherit; font-weight: bold; line-height: 1; cursor: pointer; }
+.shuffle-seed-help-button:hover, .shuffle-seed-help-button:focus-visible { border-color: #0284c7; background: #e0f2fe; color: #075985; outline: none; }
 .shuffle-seed-row input { width: 150px; font-variant-numeric: tabular-nums; }
-.shuffle-seed-row #shuffle-seed-help { color: #64748b; }
 .shuffle-seed-history { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .shuffle-seed-used { font-weight: bold; color: #2c3e50; }
 .shuffle-seed-history-btn { padding: 3px 6px; border: 1px solid #94a3b8; border-radius: 4px; background: #fff; color: #334155; font: inherit; cursor: pointer; font-variant-numeric: tabular-nums; }
 .shuffle-seed-history-btn:hover:not(:disabled) { background: #e0f2fe; border-color: #0284c7; color: #075985; }
 .shuffle-seed-history-btn:disabled { cursor: default; color: #94a3b8; border-color: #cbd5e1; background: #f8fafc; }
+.shuffle-seed-help-modal { z-index: 1130; }
+.shuffle-seed-help-modal-content { max-width: 570px; text-align: left; }
+.shuffle-seed-help-modal-content h2 { border: none; color: #2c3e50; font-size: 1.35em; text-align: center; }
+.shuffle-seed-help-body h3 { margin: 18px 0 6px; color: #1e3a5f; font-size: 1em; }
+.shuffle-seed-help-body h3:first-child { margin-top: 0; }
+.shuffle-seed-help-body p { margin: 0 0 10px; color: #475569; font-size: 0.94em; line-height: 1.65; }
+.shuffle-seed-help-modal-actions { margin-top: 20px; text-align: center; }
 .preview-points-legend { width: 100%; max-width: 1100px; margin: -5px 0 10px; padding: 7px 10px; border: 1px solid #e4b94f; border-radius: 5px; background: #fff8dd; color: #5d4500; font-size: 0.82em; }
 @media (max-width: 640px) {
     .shuffle-seed-history { margin-left: 0; width: 100%; }
