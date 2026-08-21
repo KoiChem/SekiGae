@@ -34,8 +34,8 @@ body.ui-layout-landscape #tab-main.active {
     padding: 6px 8px;
     grid-template-columns: minmax(0, 1fr) 260px;
     grid-template-areas:
-        "alert alert"
-        "legend legend"
+        "alert settings"
+        "legend settings"
         "classroom settings";
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 0 8px;
