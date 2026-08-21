@@ -300,15 +300,14 @@
                     <span class="main-class-summary-item"><span>有効座席</span><span id="counter-seats">42</span></span>
                 </div>
             </div>
-            <button type="button" class="btn btn-outline settings-drawer-toggle" id="btn-settings-drawer-toggle" onclick="toggleLandscapeSettingsDrawer()" aria-expanded="false" aria-controls="settings-bottom">設定を開く</button>
         </div>
 
         <div class="action-bar-bottom">
-            <div class="flex-row" style="gap: 10px;">
-                <button class="btn btn-outline" style="padding: 10px 15px;" onclick="resetPlacement()">配置リセット</button>
-                <button class="btn" style="padding: 10px 20px; font-size: 1.1em;" onclick="openCheckerboardPatternModal()">市松</button>
-                <button class="btn" style="padding: 10px 20px; font-size: 1.1em;" onclick="prepareShuffle(false)">シャッフル</button>
-                <button class="btn" style="padding: 10px 20px; font-size: 1.1em;" onclick="openSortModal()">整列</button>
+            <div class="flex-row seat-action-buttons" style="gap: 10px;">
+                <button class="btn btn-outline seat-action-button" style="padding: 10px 15px;" onclick="resetPlacement()">クリア</button>
+                <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="openCheckerboardPatternModal()">市松</button>
+                <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="prepareShuffle(false)">シャッフル</button>
+                <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="openSortModal()">整列</button>
             </div>
             <div class="flex-row" style="gap: 10px;">
                 <button class="btn btn-outline" id="btn-show-log" style="display:none; padding: 10px 15px;" onclick="showLogModal()">詳細ログ</button>
@@ -335,24 +334,17 @@
     </div>
 
     <div class="settings-bottom no-print" id="settings-bottom">
-        <div class="settings-drawer-header">
-            <strong>設定</strong>
-            <button type="button" class="btn btn-outline" onclick="toggleLandscapeSettingsDrawer(false)">閉じる</button>
-        </div>
         <div class="settings-status-slot" id="settings-status-slot"></div>
         <div class="panel">
             <div class="flex-row" style="justify-content: space-between; border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 8px;">
                 <h2 style="border:none; margin:0; width:auto;">座席内レイアウト設定</h2>
-                <button class="btn" style="padding: 6px 12px;" onclick="saveAndRender()">反映</button>
             </div>
-            
-            <p style="font-size:0.82em; color:#555; margin:0 0 8px 0; line-height:1.45;">座席枠内は次の固定順です。画面では常に表示し、「印刷」オフの行は座席で薄灰背景（印刷では行ごと非表示）。</p>
             <table class="seat-layout-table" style="width:100%; border-collapse:collapse; font-size:0.85em; margin-bottom:8px;">
                 <thead>
                     <tr style="background:#f1f5f9;">
                         <th style="text-align:left; padding:6px 8px; border:1px solid #ddd;">項目</th>
                         <th style="padding:6px 8px; border:1px solid #ddd; width:56px;">印刷</th>
-                        <th style="padding:6px 8px; border:1px solid #ddd; width:72px;">色(1–6)</th>
+                        <th style="padding:6px 8px; border:1px solid #ddd; width:72px;">色</th>
                         <th style="padding:6px 8px; border:1px solid #ddd; min-width:200px;">フォント</th>
                     </tr>
                 </thead>
@@ -360,37 +352,37 @@
             </table>
             <input type="hidden" id="layout-rules" value="">
             
-            <h3 style="margin-top:8px;">色番号設定 (1〜6)</h3>
+            <h3 style="margin-top:8px;">色</h3>
             <div id="color-palette-group" class="color-palette-group">
                 <div class="color-palette-row">
                     <span class="color-palette-label">1</span>
                     <button type="button" id="color-swatch-1" class="color-swatch-btn" onclick="openColorPalette(1)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(1)">その他の色</button>
+                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(1)">その他</button>
                 </div>
                 <div class="color-palette-row">
                     <span class="color-palette-label">2</span>
                     <button type="button" id="color-swatch-2" class="color-swatch-btn" onclick="openColorPalette(2)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(2)">その他の色</button>
+                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(2)">その他</button>
                 </div>
                 <div class="color-palette-row">
                     <span class="color-palette-label">3</span>
                     <button type="button" id="color-swatch-3" class="color-swatch-btn" onclick="openColorPalette(3)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(3)">その他の色</button>
+                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(3)">その他</button>
                 </div>
                 <div class="color-palette-row">
                     <span class="color-palette-label">4</span>
                     <button type="button" id="color-swatch-4" class="color-swatch-btn" onclick="openColorPalette(4)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(4)">その他の色</button>
+                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(4)">その他</button>
                 </div>
                 <div class="color-palette-row">
                     <span class="color-palette-label">5</span>
                     <button type="button" id="color-swatch-5" class="color-swatch-btn" onclick="openColorPalette(5)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(5)">その他の色</button>
+                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(5)">その他</button>
                 </div>
                 <div class="color-palette-row">
                     <span class="color-palette-label">6</span>
                     <button type="button" id="color-swatch-6" class="color-swatch-btn" onclick="openColorPalette(6)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(6)">その他の色</button>
+                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(6)">その他</button>
                 </div>
             </div>
             <div id="color-palette-panel" class="color-palette-panel" style="display:none;"></div>

@@ -1052,7 +1052,6 @@ function applyUiLayoutMode(value, shouldPersist = false) {
     document.body.classList.toggle('ui-layout-landscape', isLandscape);
     document.body.classList.toggle('ui-layout-portrait', !isLandscape);
     moveMainStatusControls(isLandscape);
-    setLandscapeSettingsDrawer(false);
 
     const button = document.getElementById('btn-ui-layout-toggle');
     if (button) {
@@ -1090,24 +1089,6 @@ function moveMainStatusControls(isLandscape) {
     if (!controls || !target || controls.parentElement === target) return;
     if (isLandscape) target.appendChild(controls);
     else target.insertBefore(controls, target.firstChild);
-}
-
-function setLandscapeSettingsDrawer(open) {
-    const isLandscape = document.body.classList.contains('ui-layout-landscape');
-    const isOpen = isLandscape && Boolean(open);
-    document.body.classList.toggle('landscape-settings-drawer-open', isOpen);
-    const button = document.getElementById('btn-settings-drawer-toggle');
-    if (button) {
-        button.textContent = isOpen ? '設定を閉じる' : '設定を開く';
-        button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    }
-}
-
-function toggleLandscapeSettingsDrawer(open) {
-    const next = typeof open === 'boolean'
-        ? open
-        : !document.body.classList.contains('landscape-settings-drawer-open');
-    setLandscapeSettingsDrawer(next);
 }
 
 // 盤面のDOM参照を統一し、同じquerySelector文字列の重複を減らす。
@@ -1438,7 +1419,7 @@ function initSeatLayoutTable() {
     }
     if (tbody.dataset.inited === '1') return;
     tbody.dataset.inited = '1';
-    const fontLabels = { gothic: 'ゴシック', mincho: '明朝', maru: '丸ゴシック', kyokasho: '教科書' };
+    const fontLabels = { gothic: 'ゴシック', mincho: '明朝', maru: '丸ゴ', kyokasho: '教科書' };
     tbody.innerHTML = SEAT_LAYOUT_FIXED_META.map(meta => `
         <tr data-layout-key="${meta.key}">
             <td style="padding:6px 8px; border:1px solid #ddd;">${meta.label}</td>
