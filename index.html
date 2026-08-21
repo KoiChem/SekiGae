@@ -294,20 +294,20 @@
             <div class="main-status-controls" id="main-status-controls">
                 <select id="class-select" onchange="switchClass('class-select')" aria-label="対象クラス" class="main-class-select"></select>
                 <div class="main-class-summary" aria-live="polite">
-                    <span class="main-class-summary-item"><span>男子</span><span id="counter-boys">—</span></span>
-                    <span class="main-class-summary-item"><span>女子</span><span id="counter-girls">—</span></span>
-                    <span class="main-class-summary-item"><span>計</span><span id="counter-students">0</span></span>
-                    <span class="main-class-summary-item"><span>有効座席</span><span id="counter-seats">42</span></span>
+                    <span class="main-class-summary-item"><span class="main-class-summary-label">男子</span><span class="main-class-summary-value" id="counter-boys">—</span><span class="main-class-summary-unit">名</span></span>
+                    <span class="main-class-summary-item"><span class="main-class-summary-label">女子</span><span class="main-class-summary-value" id="counter-girls">—</span><span class="main-class-summary-unit">名</span></span>
+                    <span class="main-class-summary-item"><span class="main-class-summary-label">計</span><span class="main-class-summary-value" id="counter-students">0</span><span class="main-class-summary-unit">名</span></span>
+                    <span class="main-class-summary-item"><span class="main-class-summary-label">有効座席</span><span class="main-class-summary-value" id="counter-seats">42</span><span class="main-class-summary-unit">席</span></span>
                 </div>
             </div>
         </div>
 
-        <div class="action-bar-bottom">
+        <div class="action-bar-bottom" id="main-action-controls">
             <div class="flex-row seat-action-buttons" style="gap: 10px;">
-                <button class="btn btn-outline seat-action-button" style="padding: 10px 15px;" onclick="resetPlacement()">クリア</button>
                 <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="openCheckerboardPatternModal()">市松</button>
                 <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="prepareShuffle(false)">シャッフル</button>
                 <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="openSortModal()">整列</button>
+                <button class="btn btn-outline seat-action-button" style="padding: 10px 15px;" onclick="resetPlacement()">クリア</button>
             </div>
             <div class="flex-row" style="gap: 10px;">
                 <button class="btn btn-outline" id="btn-show-log" style="display:none; padding: 10px 15px;" onclick="showLogModal()">詳細ログ</button>
@@ -334,6 +334,7 @@
     </div>
 
     <div class="settings-bottom no-print" id="settings-bottom">
+        <div class="settings-action-slot" id="settings-action-slot"></div>
         <div class="settings-status-slot" id="settings-status-slot"></div>
         <div class="panel">
             <div class="flex-row" style="justify-content: space-between; border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 8px;">

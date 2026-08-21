@@ -1051,6 +1051,7 @@ function applyUiLayoutMode(value, shouldPersist = false) {
     const isLandscape = mode === 'landscape';
     document.body.classList.toggle('ui-layout-landscape', isLandscape);
     document.body.classList.toggle('ui-layout-portrait', !isLandscape);
+    moveMainActionControls(isLandscape);
     moveMainStatusControls(isLandscape);
 
     const button = document.getElementById('btn-ui-layout-toggle');
@@ -1078,6 +1079,16 @@ function loadUiLayoutMode() {
 function toggleUiLayoutMode() {
     const next = document.body.classList.contains('ui-layout-landscape') ? 'portrait' : 'landscape';
     applyUiLayoutMode(next, true);
+}
+
+/** 横画面では主要操作を設定パネル上部へ移し、座席表の高さを確保する（DOMを複製しない）。 */
+function moveMainActionControls(isLandscape) {
+    const controls = document.getElementById('main-action-controls');
+    const target = isLandscape
+        ? document.getElementById('settings-action-slot')
+        : document.querySelector('#tab-main .action-bar');
+    if (!controls || !target || controls.parentElement === target) return;
+    target.appendChild(controls);
 }
 
 /** 横画面では同じクラス選択・人数表示を設定パネル上部へ移す（DOMを複製しない）。 */
@@ -2679,6 +2690,10 @@ function fitPrintDeskClassName() {
     span.style.fontSize = `${Math.max(4, low)}px`;
 }
 
+function getLandscapeSeatHeightRatio(rows) {
+    return rows >= 7 ? 0.62 : rows >= 6 ? 0.68 : 0.75;
+}
+
 function fitPrintGridLayout(grid, rows, cols) {
     if (!grid || rows <= 0 || cols <= 0) return;
     const classroom = grid.closest('.print-classroom');
@@ -2712,7 +2727,7 @@ function fitPrintGridLayout(grid, rows, cols) {
 
     // A4横は従来の比率を保ち、教卓の高さを差し引いた領域へ収める。
     const maxCellWByWidth = (availableW - (cols - 1) * gapX) / cols;
-    const seatHeightRatio = rows >= 7 ? 0.62 : rows >= 6 ? 0.68 : 0.75;
+    const seatHeightRatio = getLandscapeSeatHeightRatio(rows);
     let low = 1;
     let high = Math.max(1, maxCellWByWidth);
     for (let i = 0; i < 24; i++) {
@@ -5312,6 +5327,7 @@ function renderAssignments() {
 function autoFitText() {
     document.querySelectorAll('.seat-content').forEach(el => el.classList.remove('is-fitted'));
     requestAnimationFrame(() => {
+        syncLandscapeScreenGridAspect();
         requestAnimationFrame(() => {
             const nRef = computeMainGridNameRefPx();
             const rowSizes = sampleRowSizesByKey('#seat-grid .seat-content');
@@ -5324,6 +5340,39 @@ function autoFitText() {
             });
         });
     });
+}
+
+/**
+ * 横画面で十分な高さがあるときだけ、画面上の座席をA4横印刷と同じ縦横比にする。
+ * 高さが足りない画面では座席幅と一覧性を優先し、スクロールを発生させない。
+ */
+function syncLandscapeScreenGridAspect() {
+    const grid = document.getElementById('seat-grid');
+    const classroom = document.getElementById('classroom');
+    const desk = classroom ? classroom.querySelector('.desk-row') : null;
+    if (!grid || !classroom || !desk) return;
+
+    grid.style.removeProperty('height');
+    grid.style.removeProperty('flex');
+    classroom.classList.remove('screen-print-aspect');
+    if (!document.body.classList.contains('ui-layout-landscape') || document.body.classList.contains('print-mode')) return;
+
+    const gridStyle = window.getComputedStyle(grid);
+    const gapX = parseFloat(gridStyle.columnGap) || 0;
+    const rowGap = parseFloat(gridStyle.rowGap);
+    const gapY = Number.isFinite(rowGap) ? rowGap : gapX;
+    const cellW = Math.max(1, (grid.clientWidth - (NUM_COLS - 1) * gapX) / NUM_COLS);
+    const seatHeightRatio = getLandscapeSeatHeightRatio(NUM_ROWS);
+    const desiredGridH = NUM_ROWS * (cellW * seatHeightRatio) + (NUM_ROWS - 1) * gapY;
+    const deskStyle = window.getComputedStyle(desk);
+    const availableGridH = classroom.clientHeight
+        - desk.getBoundingClientRect().height
+        - (parseFloat(deskStyle.marginTop) || 0);
+
+    if (desiredGridH > availableGridH) return;
+    grid.style.flex = '0 0 auto';
+    grid.style.height = `${desiredGridH}px`;
+    classroom.classList.add('screen-print-aspect');
 }
 
 function commitSeats() {
