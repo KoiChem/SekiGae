@@ -1214,6 +1214,8 @@ body.print-mode.print-settings-closed #print-preview-stage {
 }
 #print-settings-panel {
     grid-area: settings;
+    position: relative;
+    z-index: 1;
     min-width: 0;
     overflow: hidden auto;
     background: #fff;
@@ -1228,7 +1230,7 @@ body.print-mode.print-settings-closed #print-preview-stage {
 .print-settings-panel-head { padding: 12px 14px 8px; border-bottom: 1px solid #e2e8f0; }
 .print-settings-panel-head h2 { margin: 0; border: 0; font-size: 1.05rem; }
 .print-settings-panel-head p { margin: 4px 0 0; color: #64748b; font-size: 0.78rem; }
-.print-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 8px; gap: 5px; border-bottom: 1px solid #e2e8f0; }
+.print-settings-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; gap: 5px; border-bottom: 1px solid #e2e8f0; }
 .print-settings-tabs [role="tab"] { min-height: 36px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #334155; font: inherit; font-weight: bold; cursor: pointer; }
 .print-settings-tabs [role="tab"][aria-selected="true"] { color: #fff; background: var(--accent); border-color: var(--accent); }
 .print-settings-tabpanel { padding: 10px 12px 12px; overflow: auto; }
@@ -1248,12 +1250,8 @@ body.print-mode.print-settings-closed #print-preview-stage {
 .print-color-palette { display: grid; grid-template-columns: repeat(6, minmax(36px, 1fr)); gap: 6px; margin-top: 10px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 7px; background: #f8fafc; }
 .print-color-palette[hidden] { display: none; }
 .print-color-palette .color-palette-chip { width: 100%; min-width: 36px; height: 36px; }
-.print-color-reference { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
-.print-color-reference h3 { margin: 0 0 7px; color: #334155; font-size: 0.82rem; }
-.print-color-reference-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.print-color-reference-item { display: flex; align-items: center; gap: 6px; min-width: 0; color: #334155; font-weight: bold; }
-.print-color-reference-number { min-width: 1em; text-align: right; }
-.print-color-reference-swatch { display: block; flex: 1 1 auto; min-width: 0; height: 26px; border: 1px solid rgba(15, 23, 42, 0.25); border-radius: 4px; }
+.print-color-controls { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+.print-color-controls h3 { margin: 0 0 7px; color: #334155; font-size: 0.82rem; }
 .print-gender-settings { display: grid; gap: 10px; }
 .print-gender-settings label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: bold; color: #334155; }
 .print-gender-active { justify-content: flex-start !important; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
@@ -1462,7 +1460,6 @@ body.print-orientation-portrait .print-seat-grid {
     .ps-color-swatch { width: 44px; height: 44px; }
     .print-color-palette { grid-template-columns: repeat(4, minmax(44px, 1fr)); gap: 6px; }
     .print-color-palette .color-palette-chip { min-width: 44px; height: 44px; }
-    .print-color-reference-swatch { height: 30px; }
 }
 @media (max-width: 640px) {
     .tab-header { padding: 0 8px; flex-wrap: wrap; }

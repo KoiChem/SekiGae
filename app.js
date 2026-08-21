@@ -3086,24 +3086,51 @@ function updateColors() {
     saveAndRender();
 }
 
-function createPrintColorReference() {
-    return `<section class="print-color-reference" aria-label="色一覧"><h3>色</h3><div class="print-color-reference-list">${[1, 2, 3, 4, 5, 6].map(i => `<div class="print-color-reference-item"><span class="print-color-reference-number">${i}</span><span class="print-color-reference-swatch" data-print-color-reference="${i}" title="色${i}"></span></div>`).join('')}</div></section>`;
+function createPrintColorControls(scope) {
+    return `<section class="print-color-controls" aria-label="色"><h3>色</h3><div class="print-color-list">${[1,2,3,4,5,6].map(i => `<div class="print-color-row"><strong>${i}</strong><button type="button" id="ps-${scope}-color-swatch-${i}" class="color-swatch-btn ps-color-swatch" data-color-scope="${scope}" data-color-index="${i}" aria-label="色${i}のパレットを開く" aria-expanded="false"></button><output id="ps-${scope}-color-hex-${i}" class="print-color-hex"></output><button type="button" class="btn btn-outline color-palette-other ps-color-other" data-color-index="${i}">その他</button></div>`).join('')}</div><div id="ps-${scope}-color-palette" class="print-color-palette" hidden></div></section>`;
+}
+
+function bindPrintColorControls(container) {
+    container.addEventListener('click', event => {
+        if (!(event.target instanceof Element)) return;
+        const button = event.target.closest('.ps-color-swatch');
+        if (!button || !container.contains(button)) return;
+        event.stopPropagation();
+        openPrintColorPalette(button.dataset.colorScope, Number(button.dataset.colorIndex), button);
+    });
+    container.addEventListener('click', event => {
+        if (!(event.target instanceof Element)) return;
+        const button = event.target.closest('.ps-color-other');
+        if (!button || !container.contains(button)) return;
+        openNativeColorPicker(Number(button.dataset.colorIndex));
+    });
 }
 
 function initPrintSettingsPanel() {
     const layout = document.getElementById('ps-panel-layout');
-    const colors = document.getElementById('ps-panel-colors');
     const gender = document.getElementById('ps-panel-gender');
-    if (!layout || !colors || !gender || layout.dataset.inited === '1') return;
+    if (!layout || !gender || layout.dataset.inited === '1') return;
     layout.dataset.inited = '1';
-    layout.innerHTML = `<div class="print-layout-table-wrap"><table class="print-layout-table"><thead><tr><th>項目</th><th>印刷</th><th>色</th><th>フォント</th></tr></thead><tbody>${SEAT_LAYOUT_FIXED_META.map(meta => `<tr class="ps-layout-row" data-layout-key="${meta.key}"><th scope="row">${meta.label}</th><td><input type="checkbox" id="ps-print-${meta.key}" aria-label="${meta.label}を印刷" onchange="setPrintLayoutField('${meta.key}', 'print', this.checked)"></td><td><select id="ps-color-${meta.key}" aria-label="${meta.label}の色番号" onchange="setPrintLayoutField('${meta.key}', 'colorNum', this.value)">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></td><td><div class="print-font-buttons" role="group" aria-label="${meta.label}のフォント">${SEAT_LAYOUT_FONT_KEYS.map(fontKey => `<button type="button" class="btn btn-outline seat-layout-font-btn ps-font-btn" data-layout-key="${meta.key}" data-font="${fontKey}" onclick="setPrintLayoutField('${meta.key}', 'fontKey', '${fontKey}')">${SEAT_LAYOUT_FONT_LABELS[fontKey]}</button>`).join('')}</div></td></tr>`).join('')}</tbody></table></div>${createPrintColorReference()}`;
-    colors.innerHTML = `<div class="print-color-list">${[1,2,3,4,5,6].map(i => `<div class="print-color-row"><strong>${i}</strong><button type="button" id="ps-color-swatch-${i}" class="color-swatch-btn ps-color-swatch" aria-label="色${i}のパレットを開く" aria-expanded="false" onclick="openPrintColorPalette(${i}, this)"></button><output id="ps-color-hex-${i}" class="print-color-hex"></output><button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(${i})">その他</button></div>`).join('')}</div><div id="ps-color-palette" class="print-color-palette" hidden></div>`;
-    gender.innerHTML = `<div class="print-gender-settings"><label class="print-gender-active"><input type="checkbox" id="ps-gb-active" onchange="setPrintGenderBorder('active', this.checked)"> 男女別の枠線を表示</label><label>男の色<select id="ps-gb-boy" onchange="setPrintGenderBorder('boy', this.value)">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label><label>女の色<select id="ps-gb-girl" onchange="setPrintGenderBorder('girl', this.value)">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label><label>表示スタイル<select id="ps-gb-style" onchange="setPrintGenderBorder('style', this.value)"><option value="solid">通常線 (実線 2px)</option><option value="thick">太線 (実線 4px)</option><option value="double">二重線 (double 4px)</option></select></label></div>${createPrintColorReference()}`;
+    layout.innerHTML = `<div class="print-layout-table-wrap"><table class="print-layout-table"><thead><tr><th>項目</th><th>印刷</th><th>色</th><th>フォント</th></tr></thead><tbody>${SEAT_LAYOUT_FIXED_META.map(meta => `<tr class="ps-layout-row" data-layout-key="${meta.key}"><th scope="row">${meta.label}</th><td><input type="checkbox" id="ps-print-${meta.key}" data-layout-key="${meta.key}" data-layout-property="print" aria-label="${meta.label}を印刷"></td><td><select id="ps-color-${meta.key}" data-layout-key="${meta.key}" data-layout-property="colorNum" aria-label="${meta.label}の色番号">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></td><td><div class="print-font-buttons" role="group" aria-label="${meta.label}のフォント">${SEAT_LAYOUT_FONT_KEYS.map(fontKey => `<button type="button" class="btn btn-outline seat-layout-font-btn ps-font-btn" data-layout-key="${meta.key}" data-font="${fontKey}">${SEAT_LAYOUT_FONT_LABELS[fontKey]}</button>`).join('')}</div></td></tr>`).join('')}</tbody></table></div>${createPrintColorControls('layout')}`;
+    gender.innerHTML = `<div class="print-gender-settings"><label class="print-gender-active"><input type="checkbox" id="ps-gb-active" data-gender-property="active"> 男女別の枠線を表示</label><label>男の色<select id="ps-gb-boy" data-gender-property="boy">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label><label>女の色<select id="ps-gb-girl" data-gender-property="girl">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label><label>表示スタイル<select id="ps-gb-style" data-gender-property="style"><option value="solid">通常線 (実線 2px)</option><option value="thick">太線 (実線 4px)</option><option value="double">二重線 (double 4px)</option></select></label></div>${createPrintColorControls('gender')}`;
+    layout.querySelectorAll('[data-layout-property]').forEach(control => control.addEventListener('change', () => {
+        const value = control.dataset.layoutProperty === 'print' ? control.checked : control.value;
+        setPrintLayoutField(control.dataset.layoutKey, control.dataset.layoutProperty, value);
+    }));
+    layout.querySelectorAll('.ps-font-btn').forEach(button => button.addEventListener('click', () => {
+        setPrintLayoutField(button.dataset.layoutKey, 'fontKey', button.dataset.font);
+    }));
+    gender.querySelectorAll('[data-gender-property]').forEach(control => control.addEventListener('change', () => {
+        const value = control.dataset.genderProperty === 'active' ? control.checked : control.value;
+        setPrintGenderBorder(control.dataset.genderProperty, value);
+    }));
+    bindPrintColorControls(layout);
+    bindPrintColorControls(gender);
     document.querySelector('.print-settings-tabs')?.addEventListener('keydown', handlePrintSettingsTabKeydown);
     document.addEventListener('click', event => {
-        const palette = document.getElementById('ps-color-palette');
-        if (!palette || palette.hidden || !(event.target instanceof Element)) return;
-        if (!event.target.closest('#ps-color-palette, .ps-color-swatch')) closePrintColorPalette();
+        const palette = document.querySelector('.print-color-palette:not([hidden])');
+        if (!palette || !(event.target instanceof Element)) return;
+        if (!event.target.closest('.print-color-palette, .ps-color-swatch')) closePrintColorPalette();
     });
     syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
 }
@@ -3119,13 +3146,11 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
     });
     for (let i = 1; i <= 6; i++) {
         const color = settings.colors[`c${i}`];
-        const swatch = document.getElementById(`ps-color-swatch-${i}`);
-        const hex = document.getElementById(`ps-color-hex-${i}`);
-        if (swatch) { swatch.style.backgroundColor = color; swatch.title = color; }
-        if (hex) hex.textContent = color;
-        document.querySelectorAll(`[data-print-color-reference="${i}"]`).forEach(reference => {
-            reference.style.backgroundColor = color;
-            reference.title = `色${i}: ${color.toUpperCase()}`;
+        ['layout', 'gender'].forEach(scope => {
+            const swatch = document.getElementById(`ps-${scope}-color-swatch-${i}`);
+            const hex = document.getElementById(`ps-${scope}-color-hex-${i}`);
+            if (swatch) { swatch.style.backgroundColor = color; swatch.title = color; }
+            if (hex) hex.textContent = color;
         });
     }
     const gb = settings.genderBorderData;
@@ -3140,7 +3165,7 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
 }
 
 function refreshPrintColorControls() {
-    if (!document.getElementById('ps-panel-colors')) return;
+    if (!document.getElementById('print-settings-panel')) return;
     syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
 }
 
@@ -3156,7 +3181,7 @@ function setPrintGenderBorder(property, rawValue) {
 }
 
 function selectPrintSettingsTab(tab, shouldFocus = false) {
-    const ids = ['layout', 'colors', 'gender'];
+    const ids = ['layout', 'gender'];
     if (!ids.includes(tab)) tab = 'layout';
     printPanelSelectedTab = tab;
     ids.forEach(id => {
@@ -3171,7 +3196,7 @@ function selectPrintSettingsTab(tab, shouldFocus = false) {
 }
 
 function handlePrintSettingsTabKeydown(event) {
-    const tabs = ['layout', 'colors', 'gender'];
+    const tabs = ['layout', 'gender'];
     const current = tabs.findIndex(id => document.activeElement?.id === `ps-tab-${id}`);
     if (current < 0) return;
     let next = current;
@@ -3199,9 +3224,11 @@ function togglePrintSettingsPanel(forceOpen) {
     updatePrintPreviewChromeLayout();
 }
 
-function openPrintColorPalette(index, anchor) {
-    const palette = document.getElementById('ps-color-palette');
+function openPrintColorPalette(scope, index, anchor) {
+    const palette = document.getElementById(`ps-${scope}-color-palette`);
     if (!palette) return;
+    const existing = document.querySelector('.print-color-palette:not([hidden])');
+    if (existing && existing !== palette) closePrintColorPalette();
     if (!palette.hidden && palette.dataset.index === String(index)) { closePrintColorPalette(); return; }
     printPaletteRestoreTarget = anchor;
     palette.dataset.index = String(index);
@@ -3219,8 +3246,11 @@ function openPrintColorPalette(index, anchor) {
 }
 
 function closePrintColorPalette(returnFocus = false) {
-    const palette = document.getElementById('ps-color-palette');
-    if (palette) { palette.hidden = true; palette.innerHTML = ''; delete palette.dataset.index; }
+    document.querySelectorAll('.print-color-palette:not([hidden])').forEach(palette => {
+        palette.hidden = true;
+        palette.innerHTML = '';
+        delete palette.dataset.index;
+    });
     printPaletteRestoreTarget?.setAttribute('aria-expanded', 'false');
     if (returnFocus) printPaletteRestoreTarget?.focus();
     printPaletteRestoreTarget = null;
