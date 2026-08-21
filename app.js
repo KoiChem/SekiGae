@@ -929,6 +929,15 @@ let printInactiveMode = 'hide';
 let printOrientation = 'landscape';
 /** 印刷プレビュー専用の視点。null は通常画面の現在視点を引き継ぐ。保存データには含めない。 */
 let printIsStudentView = null;
+/** 印刷だけに使う一時的な外観上書き。保存データ・バックアップには含めない。 */
+const DEFAULT_PRINT_APPEARANCE = Object.freeze({
+    fontMode: 'inherit',
+    textColorMode: 'inherit',
+    textColor: '#1F2937',
+    lineColorMode: 'inherit',
+    lineColor: '#4B5563'
+});
+let printAppearance = { ...DEFAULT_PRINT_APPEARANCE };
 // 例外席選択中、座席固定により反転禁止となっている席のインデックス集合
 let protectedExceptionSeats = new Set();
 /** バックアップ読込で選択モーダルを出すまで保持する解析済み JSON オブジェクト */
@@ -1386,7 +1395,11 @@ function initializeApp() {
     initFormArrowNavigation();
     window.addEventListener('resize', () => {
         scheduleAppViewportHeightSync();
-        if (document.body.classList.contains('print-mode')) updatePrintToolbarInset();
+        if (document.body.classList.contains('print-mode')) {
+            updatePrintPreviewChromeLayout();
+            updatePrintToolbarInset();
+            updatePrintPreviewScale();
+        }
         scheduleFitDeskClassName();
     });
     if (window.visualViewport) {
@@ -2450,6 +2463,143 @@ function updatePrintToolbarInset() {
     document.documentElement.style.setProperty('--print-toolbar-h', `${h}px`);
 }
 
+function normalizeHexColor(value, fallback) {
+    const normalizedFallback = typeof fallback === 'string' && /^#[0-9A-F]{6}$/i.test(fallback)
+        ? fallback.toUpperCase()
+        : '#1F2937';
+    const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+    return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : normalizedFallback;
+}
+
+function syncPrintAppearanceControls() {
+    const font = document.getElementById('print-font-mode');
+    const textEnabled = document.getElementById('print-text-color-enabled');
+    const textColor = document.getElementById('print-text-color');
+    const textHex = document.getElementById('print-text-color-hex');
+    const lineEnabled = document.getElementById('print-line-color-enabled');
+    const lineColor = document.getElementById('print-line-color');
+    const lineHex = document.getElementById('print-line-color-hex');
+    if (font) font.value = printAppearance.fontMode;
+    if (textEnabled) textEnabled.checked = printAppearance.textColorMode === 'custom';
+    if (textColor) {
+        textColor.value = printAppearance.textColor;
+        textColor.disabled = printAppearance.textColorMode !== 'custom';
+    }
+    if (textHex) textHex.value = textHex.textContent = printAppearance.textColor;
+    if (lineEnabled) lineEnabled.checked = printAppearance.lineColorMode === 'custom';
+    if (lineColor) {
+        lineColor.value = printAppearance.lineColor;
+        lineColor.disabled = printAppearance.lineColorMode !== 'custom';
+    }
+    if (lineHex) lineHex.value = lineHex.textContent = printAppearance.lineColor;
+}
+
+function applyPrintAppearance() {
+    const printRoot = document.getElementById('print-root');
+    if (!printRoot) return;
+    printRoot.classList.remove('print-font-gothic', 'print-font-mincho', 'print-font-maru', 'print-font-kyokasho');
+    if (printAppearance.fontMode !== 'inherit') printRoot.classList.add(`print-font-${printAppearance.fontMode}`);
+    printRoot.classList.toggle('print-text-color-custom', printAppearance.textColorMode === 'custom');
+    printRoot.classList.toggle('print-line-color-custom', printAppearance.lineColorMode === 'custom');
+    printRoot.style.setProperty('--print-custom-text-color', printAppearance.textColor);
+    printRoot.style.setProperty('--print-custom-line-color', printAppearance.lineColor);
+}
+
+function refitPrintPreviewAtNaturalSize() {
+    const grid = document.getElementById('print-seat-grid');
+    if (!grid) return;
+    resetPrintPreviewScale();
+    const bounds = getGridBoundaries();
+    const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
+    const visibleRows = Math.max(1, bounds.currMaxR - bounds.currMinR + 1);
+    fitPrintDeskClassName();
+    fitPrintGridLayout(grid, visibleRows, visibleCols);
+    fitAllPrintSeatsSync();
+}
+
+function resetPrintPreviewScale() {
+    const printRoot = document.getElementById('print-root');
+    const page = printRoot ? printRoot.querySelector('.print-page') : null;
+    const shell = printRoot ? printRoot.querySelector('.print-page-shell') : null;
+    if (!page || !shell) return;
+    page.style.transform = 'scale(1)';
+    const naturalWidth = page.offsetWidth;
+    const naturalHeight = page.offsetHeight;
+    shell.style.width = `${naturalWidth}px`;
+    shell.style.height = `${naturalHeight}px`;
+}
+
+function updatePrintPreviewScale() {
+    if (!document.body.classList.contains('print-mode')) return;
+    const printRoot = document.getElementById('print-root');
+    const page = printRoot ? printRoot.querySelector('.print-page') : null;
+    const shell = printRoot ? printRoot.querySelector('.print-page-shell') : null;
+    if (!printRoot || !page || !shell) return;
+    resetPrintPreviewScale();
+    const naturalWidth = page.offsetWidth;
+    const naturalHeight = page.offsetHeight;
+    const availableWidth = Math.max(1, printRoot.clientWidth - 20);
+    const scale = Math.min(1, availableWidth / naturalWidth);
+    page.style.transform = `scale(${scale})`;
+    page.style.transformOrigin = 'top left';
+    shell.style.width = `${naturalWidth * scale}px`;
+    shell.style.height = `${naturalHeight * scale}px`;
+}
+
+function updatePrintPreviewChromeLayout() {
+    if (!document.body.classList.contains('print-mode')) return;
+    const sideBreakpoint = printOrientation === 'portrait' ? 1050 : 1380;
+    const useSidePanel = window.innerWidth >= sideBreakpoint;
+    document.body.classList.toggle('print-panel-side', useSidePanel);
+    document.body.classList.toggle('print-panel-docked', !useSidePanel);
+}
+
+function setPrintFontMode(value) {
+    printAppearance.fontMode = SEAT_LAYOUT_FONT_KEYS.includes(value) ? value : 'inherit';
+    syncPrintAppearanceControls();
+    applyPrintAppearance();
+    if (document.body.classList.contains('print-mode')) {
+        refitPrintPreviewAtNaturalSize();
+        updatePrintPreviewScale();
+    }
+}
+
+function setPrintTextColorEnabled(enabled) {
+    printAppearance.textColorMode = enabled ? 'custom' : 'inherit';
+    syncPrintAppearanceControls();
+    applyPrintAppearance();
+}
+
+function setPrintTextColor(value) {
+    printAppearance.textColor = normalizeHexColor(value, printAppearance.textColor);
+    syncPrintAppearanceControls();
+    applyPrintAppearance();
+}
+
+function setPrintLineColorEnabled(enabled) {
+    printAppearance.lineColorMode = enabled ? 'custom' : 'inherit';
+    syncPrintAppearanceControls();
+    applyPrintAppearance();
+}
+
+function setPrintLineColor(value) {
+    printAppearance.lineColor = normalizeHexColor(value, printAppearance.lineColor);
+    syncPrintAppearanceControls();
+    applyPrintAppearance();
+}
+
+function resetPrintAppearance() {
+    printAppearance = { ...DEFAULT_PRINT_APPEARANCE };
+    syncPrintAppearanceControls();
+    applyPrintAppearance();
+    if (document.body.classList.contains('print-mode')) {
+        refitPrintPreviewAtNaturalSize();
+        updatePrintPreviewScale();
+    }
+    const status = document.getElementById('print-appearance-status');
+    if (status) status.textContent = '印刷スタイルを標準に戻しました';
+}
+
 function updatePrintInactiveToggleUi() {
     const btn = document.getElementById('btn-print-inactive-toggle');
     if (!btn) return;
@@ -2507,15 +2657,20 @@ function setPrintOrientation(value) {
     const nextOrientation = normalizePrintOrientation(value);
     if (printOrientation === nextOrientation) {
         applyPrintOrientation();
+        if (document.body.classList.contains('print-mode')) {
+            updatePrintPreviewChromeLayout();
+            updatePrintToolbarInset();
+            updatePrintPreviewScale();
+        }
         return;
     }
     printOrientation = nextOrientation;
+    resetPrintPreviewScale();
     applyPrintOrientation();
     if (document.body.classList.contains('print-mode')) {
+        updatePrintPreviewChromeLayout();
+        updatePrintToolbarInset();
         renderPrintLayout();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(updatePrintToolbarInset);
-        });
     }
 }
 
@@ -2524,9 +2679,6 @@ function togglePrintInactiveDisplay() {
     updatePrintInactiveToggleUi();
     if (document.body.classList.contains('print-mode')) {
         renderPrintLayout();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(updatePrintToolbarInset);
-        });
     }
     saveCurrentClassData();
 }
@@ -2536,9 +2688,6 @@ function togglePrintView() {
     printIsStudentView = !getPrintStudentView();
     updatePrintViewToggleUi();
     renderPrintLayout();
-    requestAnimationFrame(() => {
-        requestAnimationFrame(updatePrintToolbarInset);
-    });
 }
 
 function togglePrintMode() {
@@ -2548,17 +2697,22 @@ function togglePrintMode() {
     if (isPrintMode) {
         printIsStudentView = isStudentView;
         applyPrintOrientation();
+        syncPrintAppearanceControls();
         updatePrintInactiveToggleUi();
         updatePrintViewToggleUi();
+        updatePrintPreviewChromeLayout();
+        updatePrintToolbarInset();
         renderPrintLayout();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(updatePrintToolbarInset);
-        });
     } else {
         printIsStudentView = null;
         document.documentElement.style.removeProperty('--print-toolbar-h');
+        document.body.classList.remove('print-panel-side', 'print-panel-docked');
         const printRoot = document.getElementById('print-root');
-        if (printRoot) printRoot.innerHTML = '';
+        if (printRoot) {
+            printRoot.innerHTML = '';
+            printRoot.removeAttribute('style');
+            printRoot.classList.remove('student-view', 'print-text-color-custom', 'print-line-color-custom', 'print-font-gothic', 'print-font-mincho', 'print-font-maru', 'print-font-kyokasho');
+        }
     }
     renderAssignments();
 }
@@ -2604,18 +2758,22 @@ function renderPrintLayout() {
     const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
     const visibleRows = Math.max(1, bounds.currMaxR - bounds.currMinR + 1);
 
+    resetPrintPreviewScale();
     printRoot.classList.toggle('student-view', getPrintStudentView());
     const printDeskHtml = buildDeskTitleInnerHtml();
     printRoot.innerHTML = `
-        <div class="print-page">
-            <div class="print-classroom">
-                <div class="print-desk-row">
-                    <div class="print-desk print-desk-class"><span class="print-class-name-in-desk" id="print-class-name-in-desk">${printDeskHtml}</span></div>
+        <div class="print-page-shell">
+            <div class="print-page">
+                <div class="print-classroom">
+                    <div class="print-desk-row">
+                        <div class="print-desk print-desk-class"><span class="print-class-name-in-desk" id="print-class-name-in-desk">${printDeskHtml}</span></div>
+                    </div>
+                    <div id="print-seat-grid" class="print-seat-grid"></div>
                 </div>
-                <div id="print-seat-grid" class="print-seat-grid"></div>
             </div>
         </div>
     `;
+    applyPrintAppearance();
     const grid = document.getElementById('print-seat-grid');
     grid.style.gridTemplateColumns = `repeat(${visibleCols}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${visibleRows}, 1fr)`;
@@ -2653,9 +2811,10 @@ function renderPrintLayout() {
     }
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            fitPrintDeskClassName();
-            fitPrintGridLayout(grid, visibleRows, visibleCols);
-            autoFitPrintText();
+            if (!grid.isConnected) return;
+            refitPrintPreviewAtNaturalSize();
+            updatePrintToolbarInset();
+            updatePrintPreviewScale();
         });
     });
 }
@@ -2769,20 +2928,20 @@ function fitAllPrintSeatsSync() {
 
 /** 印刷を実行（フィット未完のまま空白で印刷されないよう、押下時に同期フィット → 印刷） */
 function executePrint() {
+    resetPrintPreviewScale();
     applyPrintOrientation();
     if (!document.body.classList.contains('print-mode')) {
         window.print();
         return;
     }
-    const grid = document.getElementById('print-seat-grid');
-    if (grid) {
-        const bounds = getGridBoundaries();
-        const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
-        const visibleRows = Math.max(1, bounds.currMaxR - bounds.currMinR + 1);
-        fitPrintDeskClassName();
-        fitPrintGridLayout(grid, visibleRows, visibleCols);
-    }
-    fitAllPrintSeatsSync();
+    refitPrintPreviewAtNaturalSize();
+    window.addEventListener('afterprint', () => {
+        if (document.body.classList.contains('print-mode')) {
+            updatePrintPreviewChromeLayout();
+            updatePrintToolbarInset();
+            updatePrintPreviewScale();
+        }
+    }, { once: true });
     window.print();
 }
 
