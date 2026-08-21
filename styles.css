@@ -1008,7 +1008,10 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
     pointer-events: none;
     opacity: 0.85;
     z-index: 2;
+    /* 教員側の盤面縦反転を打ち消し、例外席ラベルと同じ向きにそろえる。 */
+    transform: scaleY(-1);
 }
+.classroom-wrapper.student-view .seat.protected-exception::before { transform: scaleX(-1); }
 @keyframes seat-protected-flash {
     0%   { box-shadow: 0 0 0 0 rgba(231,76,60,0.0); }
     20%  { box-shadow: 0 0 0 6px rgba(231,76,60,0.65); }
