@@ -937,6 +937,13 @@ let seatTrackTouchTimer = null;
 let seatTrackLongPressTriggered = false;
 let suppressSeatClickUntil = 0;
 let activeColorPaletteTarget = 0;
+let printPanelOpen = false;
+let printPanelSelectedTab = 'layout';
+let printRenderGeneration = 0;
+let printScreenScale = 1;
+let printPaletteRestoreTarget = null;
+
+const SEAT_LAYOUT_FONT_LABELS = { gothic: 'ゴシック', mincho: '明朝', maru: '丸ゴ', kyokasho: '教科書' };
 
 function getShuffleSeedInputElement() {
     return document.getElementById('shuffle-seed-input');
@@ -1380,15 +1387,20 @@ function initializeApp() {
     loadUiLayoutMode();
     initSeatLayoutTable();
     initColorPaletteUI();
+    initPrintSettingsPanel();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
     updatePrintInactiveToggleUi();
     applyPrintOrientation();
     initFormArrowNavigation();
     window.addEventListener('resize', () => {
         scheduleAppViewportHeightSync();
-        if (document.body.classList.contains('print-mode')) updatePrintToolbarInset();
+        if (document.body.classList.contains('print-mode')) {
+            updatePrintToolbarInset();
+            updatePrintPreviewChromeLayout();
+        }
         scheduleFitDeskClassName();
     });
+    window.addEventListener('afterprint', restorePrintScreenState);
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', scheduleAppViewportHeightSync);
         window.visualViewport.addEventListener('scroll', scheduleAppViewportHeightSync);
@@ -1430,7 +1442,6 @@ function initSeatLayoutTable() {
     }
     if (tbody.dataset.inited === '1') return;
     tbody.dataset.inited = '1';
-    const fontLabels = { gothic: 'ゴシック', mincho: '明朝', maru: '丸ゴ', kyokasho: '教科書' };
     tbody.innerHTML = SEAT_LAYOUT_FIXED_META.map(meta => `
         <tr data-layout-key="${meta.key}">
             <td style="padding:6px 8px; border:1px solid #ddd;">${meta.label}</td>
@@ -1445,7 +1456,7 @@ function initSeatLayoutTable() {
                 <div class="seat-layout-font-btns" role="group" aria-label="${meta.label}のフォント">
                     ${SEAT_LAYOUT_FONT_KEYS.map(fk => `
                         <button type="button" class="btn btn-outline seat-layout-font-btn${fk === 'gothic' ? ' seat-layout-font-btn--active' : ''}"
-                            data-font="${fk}" data-layout-key="${meta.key}" onclick="setSeatLayoutRowFont('${meta.key}','${fk}')" style="padding:2px 6px;font-size:0.72em;margin:0 2px 0 0;">${fontLabels[fk]}</button>
+                            data-font="${fk}" data-layout-key="${meta.key}" onclick="setSeatLayoutRowFont('${meta.key}','${fk}')" style="padding:2px 6px;font-size:0.72em;margin:0 2px 0 0;">${SEAT_LAYOUT_FONT_LABELS[fk]}</button>
                     `).join('')}
                 </div>
             </td>
@@ -1474,11 +1485,12 @@ function normalizeSeatLayoutFields(saved) {
     return SEAT_LAYOUT_FIXED_META.map(meta => {
         const prev = Array.isArray(saved) ? saved.find(x => x.key === meta.key) : null;
         let fontKey = prev && prev.fontKey && SEAT_LAYOUT_FONT_KEYS.includes(prev.fontKey) ? prev.fontKey : 'gothic';
+        const parsedColor = parseInt(prev && prev.colorNum, 10);
         return {
             key: meta.key,
             screen: true,
             print: prev ? !!prev.print : true,
-            colorNum: Math.min(6, Math.max(1, parseInt(prev && prev.colorNum, 10) || meta.colorDefault)),
+            colorNum: Number.isFinite(parsedColor) ? Math.min(6, Math.max(1, parsedColor)) : meta.colorDefault,
             fontKey
         };
     });
@@ -1507,6 +1519,105 @@ function applySeatLayoutToUI(fields) {
         if (c) c.value = String(f.colorNum);
         syncSeatLayoutFontButtons(f.key, f.fontKey || 'gothic');
     });
+}
+
+function normalizeColorHex(value, fallback) {
+    return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : fallback;
+}
+
+function normalizeGenderBorderData(value) {
+    const clamp = (input, fallback) => {
+        const n = parseInt(input, 10);
+        return Number.isFinite(n) ? String(Math.min(6, Math.max(1, n))) : String(fallback);
+    };
+    return {
+        active: !!(value && value.active),
+        boy: clamp(value && value.boy, 6),
+        girl: clamp(value && value.girl, 5),
+        style: value && ['solid', 'thick', 'double'].includes(value.style) ? value.style : 'solid'
+    };
+}
+
+function readGenderBorderDataFromMainUi() {
+    return normalizeGenderBorderData({
+        active: document.getElementById('btn-gender-border')?.classList.contains('btn-success'),
+        boy: document.getElementById('gb-boy-color')?.value,
+        girl: document.getElementById('gb-girl-color')?.value,
+        style: document.getElementById('gb-style')?.value
+    });
+}
+
+function writeGenderBorderDataToMainUi(value) {
+    const data = normalizeGenderBorderData(value);
+    const boy = document.getElementById('gb-boy-color');
+    const girl = document.getElementById('gb-girl-color');
+    const style = document.getElementById('gb-style');
+    const btn = document.getElementById('btn-gender-border');
+    const panel = document.getElementById('gender-border-settings');
+    if (boy) boy.value = data.boy;
+    if (girl) girl.value = data.girl;
+    if (style) style.value = data.style;
+    if (btn) {
+        btn.classList.toggle('btn-success', data.active);
+        btn.classList.toggle('btn-outline', !data.active);
+        btn.textContent = data.active ? 'ON' : 'OFF';
+    }
+    if (panel) panel.style.display = data.active ? 'block' : 'none';
+}
+
+function normalizeSeatAppearanceSettings(value) {
+    const colors = {};
+    for (let i = 1; i <= 6; i++) {
+        colors[`c${i}`] = normalizeColorHex(value?.colors?.[`c${i}`], DEFAULT_SEAT_COLORS[i - 1]);
+    }
+    return {
+        seatLayoutFields: normalizeSeatLayoutFields(value?.seatLayoutFields),
+        colors,
+        genderBorderData: normalizeGenderBorderData(value?.genderBorderData)
+    };
+}
+
+function readSeatAppearanceSettingsFromMainUi() {
+    const colors = {};
+    for (let i = 1; i <= 6; i++) colors[`c${i}`] = getColorInput(i)?.value;
+    return normalizeSeatAppearanceSettings({
+        seatLayoutFields: collectSeatLayoutFromUI(),
+        colors,
+        genderBorderData: readGenderBorderDataFromMainUi()
+    });
+}
+
+function applySeatColorCssVariablesAndSwatches() {
+    for (let i = 1; i <= 6; i++) {
+        const input = getColorInput(i);
+        const color = normalizeColorHex(input?.value, DEFAULT_SEAT_COLORS[i - 1]);
+        if (input) input.value = color;
+        document.documentElement.style.setProperty(`--c${i}`, color);
+    }
+    refreshColorPaletteSwatches();
+    refreshPrintColorControls();
+}
+
+function writeSeatAppearanceSettingsToMainUi(value) {
+    const settings = normalizeSeatAppearanceSettings(value);
+    applySeatLayoutToUI(settings.seatLayoutFields);
+    for (let i = 1; i <= 6; i++) {
+        const input = getColorInput(i);
+        if (input) input.value = settings.colors[`c${i}`];
+    }
+    writeGenderBorderDataToMainUi(settings.genderBorderData);
+    applySeatColorCssVariablesAndSwatches();
+    return settings;
+}
+
+function commitPrintSettingsMutation(mutator) {
+    const value = readSeatAppearanceSettingsFromMainUi();
+    const copy = JSON.parse(JSON.stringify(value));
+    mutator(copy);
+    const normalized = writeSeatAppearanceSettingsToMainUi(copy);
+    saveCurrentClassData();
+    syncPrintSettingsPanel(normalized);
+    renderAssignments();
 }
 
 function studentFieldValue(student, key) {
@@ -2450,6 +2561,59 @@ function updatePrintToolbarInset() {
     document.documentElement.style.setProperty('--print-toolbar-h', `${h}px`);
 }
 
+function resetPrintScreenScale() {
+    const page = document.querySelector('#print-root .print-page');
+    const shell = document.querySelector('#print-root .print-page-shell');
+    if (page) page.style.transform = 'none';
+    if (shell) { shell.style.width = ''; shell.style.height = ''; }
+    printScreenScale = 1;
+}
+
+function updatePrintPreviewChromeLayout() {
+    if (!document.body.classList.contains('print-mode')) return;
+    const panel = document.getElementById('print-settings-panel');
+    const root = document.getElementById('print-root');
+    const page = document.querySelector('#print-root .print-page');
+    if (!root || !page) return;
+    resetPrintScreenScale();
+    updatePrintToolbarInset();
+    // CSS mm の実測値を基本にしつつ、ブラウザのプレビュー縮小が先行する環境では
+    // A4 の通常 CSS px 幅を下限にする。side 判定だけは「自然A4を置けるか」で行う。
+    const nominalA4Width = printOrientation === 'portrait' ? (190 * 96 / 25.4) : (277 * 96 / 25.4);
+    const naturalWidth = Math.max(page.offsetWidth, nominalA4Width);
+    const previewWidthIfSide = window.innerWidth - 340 - 16 - 32;
+    const candidateScale = naturalWidth > 0 ? previewWidthIfSide / naturalWidth : 0;
+    const side = Boolean(panel && !panel.hidden && window.matchMedia('(orientation: landscape)').matches && window.innerHeight >= 600 && candidateScale >= 0.78);
+    document.body.classList.toggle('print-settings-side', side);
+    document.body.classList.toggle('print-settings-docked', !side);
+    requestAnimationFrame(() => applyPrintScreenScale());
+}
+
+function applyPrintScreenScale() {
+    if (!document.body.classList.contains('print-mode')) return;
+    const page = document.querySelector('#print-root .print-page');
+    const shell = document.querySelector('#print-root .print-page-shell');
+    const root = document.getElementById('print-root');
+    if (!page || !shell || !root) return;
+    resetPrintScreenScale();
+    const naturalWidth = page.offsetWidth;
+    const naturalHeight = page.offsetHeight;
+    const availableWidth = Math.max(1, root.clientWidth);
+    const scale = Math.min(1, availableWidth / naturalWidth);
+    page.style.transform = `scale(${scale})`;
+    shell.style.width = `${naturalWidth * scale}px`;
+    shell.style.height = `${naturalHeight * scale}px`;
+    printScreenScale = scale;
+}
+
+function restorePrintScreenState() {
+    if (!document.body.classList.contains('print-mode')) return;
+    requestAnimationFrame(() => {
+        updatePrintToolbarInset();
+        updatePrintPreviewChromeLayout();
+    });
+}
+
 function updatePrintInactiveToggleUi() {
     const btn = document.getElementById('btn-print-inactive-toggle');
     if (!btn) return;
@@ -2510,12 +2674,10 @@ function setPrintOrientation(value) {
         return;
     }
     printOrientation = nextOrientation;
+    resetPrintScreenScale();
     applyPrintOrientation();
     if (document.body.classList.contains('print-mode')) {
         renderPrintLayout();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(updatePrintToolbarInset);
-        });
     }
 }
 
@@ -2524,9 +2686,6 @@ function togglePrintInactiveDisplay() {
     updatePrintInactiveToggleUi();
     if (document.body.classList.contains('print-mode')) {
         renderPrintLayout();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(updatePrintToolbarInset);
-        });
     }
     saveCurrentClassData();
 }
@@ -2536,9 +2695,6 @@ function togglePrintView() {
     printIsStudentView = !getPrintStudentView();
     updatePrintViewToggleUi();
     renderPrintLayout();
-    requestAnimationFrame(() => {
-        requestAnimationFrame(updatePrintToolbarInset);
-    });
 }
 
 function togglePrintMode() {
@@ -2547,30 +2703,34 @@ function togglePrintMode() {
     document.getElementById('print-overlay').style.display = isPrintMode ? 'block' : 'none';
     if (isPrintMode) {
         printIsStudentView = isStudentView;
+        togglePrintSettingsPanel(true);
         applyPrintOrientation();
         updatePrintInactiveToggleUi();
         updatePrintViewToggleUi();
+        syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
         renderPrintLayout();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(updatePrintToolbarInset);
-        });
     } else {
         printIsStudentView = null;
+        printRenderGeneration++;
+        resetPrintScreenScale();
+        document.body.classList.remove('print-settings-side', 'print-settings-docked', 'print-settings-closed');
         document.documentElement.style.removeProperty('--print-toolbar-h');
         const printRoot = document.getElementById('print-root');
         if (printRoot) printRoot.innerHTML = '';
     }
-    renderAssignments();
+    // 印刷開始時は上で print DOM を一度だけ作成済み。通常画面の再描画は終了時だけ行う。
+    if (!isPrintMode) renderAssignments();
 }
 
 function getRenderConfig() {
+    const gender = readGenderBorderDataFromMainUi();
     return {
         seatLayoutFields: normalizeSeatLayoutFields(collectSeatLayoutFromUI()),
         currentData: previewAssignment || seatAssignment,
-        isGbActive: document.getElementById('btn-gender-border') ? document.getElementById('btn-gender-border').classList.contains('btn-success') : false,
-        gbBoy: document.getElementById('gb-boy-color') ? document.getElementById('gb-boy-color').value : '6',
-        gbGirl: document.getElementById('gb-girl-color') ? document.getElementById('gb-girl-color').value : '5',
-        gbStyleVal: document.getElementById('gb-style') ? document.getElementById('gb-style').value : 'solid'
+        isGbActive: gender.active,
+        gbBoy: gender.boy,
+        gbGirl: gender.girl,
+        gbStyleVal: gender.style
     };
 }
 
@@ -2599,6 +2759,8 @@ function buildSeatContentHtml(student, cfg, forPrint = false) {
 function renderPrintLayout() {
     const printRoot = document.getElementById('print-root');
     if (!printRoot) return;
+    const generation = ++printRenderGeneration;
+    resetPrintScreenScale();
     const cfg = getRenderConfig();
     const bounds = getGridBoundaries();
     const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
@@ -2607,12 +2769,14 @@ function renderPrintLayout() {
     printRoot.classList.toggle('student-view', getPrintStudentView());
     const printDeskHtml = buildDeskTitleInnerHtml();
     printRoot.innerHTML = `
-        <div class="print-page">
-            <div class="print-classroom">
-                <div class="print-desk-row">
-                    <div class="print-desk print-desk-class"><span class="print-class-name-in-desk" id="print-class-name-in-desk">${printDeskHtml}</span></div>
+        <div class="print-page-shell">
+            <div class="print-page">
+                <div class="print-classroom">
+                    <div class="print-desk-row">
+                        <div class="print-desk print-desk-class"><span class="print-class-name-in-desk" id="print-class-name-in-desk">${printDeskHtml}</span></div>
+                    </div>
+                    <div id="print-seat-grid" class="print-seat-grid"></div>
                 </div>
-                <div id="print-seat-grid" class="print-seat-grid"></div>
             </div>
         </div>
     `;
@@ -2653,9 +2817,12 @@ function renderPrintLayout() {
     }
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+            if (generation !== printRenderGeneration || !document.body.classList.contains('print-mode')) return;
             fitPrintDeskClassName();
             fitPrintGridLayout(grid, visibleRows, visibleCols);
-            autoFitPrintText();
+            fitAllPrintSeatsSync();
+            updatePrintToolbarInset();
+            updatePrintPreviewChromeLayout();
         });
     });
 }
@@ -2769,6 +2936,7 @@ function fitAllPrintSeatsSync() {
 
 /** 印刷を実行（フィット未完のまま空白で印刷されないよう、押下時に同期フィット → 印刷） */
 function executePrint() {
+    resetPrintScreenScale();
     applyPrintOrientation();
     if (!document.body.classList.contains('print-mode')) {
         window.print();
@@ -2813,19 +2981,19 @@ function updateGridRowsVisibility() {
 
 // --- UI連携関連 ---
 function toggleGenderBorder() {
-    const btn = document.getElementById('btn-gender-border');
-    const panel = document.getElementById('gender-border-settings');
-    if (btn.classList.contains('btn-outline')) {
-        btn.classList.replace('btn-outline', 'btn-success');
-        btn.innerText = 'ON'; panel.style.display = 'block';
-    } else {
-        btn.classList.replace('btn-success', 'btn-outline');
-        btn.innerText = 'OFF'; panel.style.display = 'none';
-    }
+    const data = readGenderBorderDataFromMainUi();
+    data.active = !data.active;
+    writeGenderBorderDataToMainUi(data);
+    syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
     saveAndRender();
 }
 
-function saveAndRender() { saveCurrentClassData(); if(currentStudents.length > 0) renderAssignments(); }
+function saveAndRender() {
+    writeSeatAppearanceSettingsToMainUi(readSeatAppearanceSettingsFromMainUi());
+    saveCurrentClassData();
+    syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
+    if (currentStudents.length > 0) renderAssignments();
+}
 
 function getColorInput(index) {
     return document.getElementById(`color-${index}`);
@@ -2900,9 +3068,141 @@ function initColorPaletteUI() {
 }
 
 function updateColors() {
-    for(let i=1; i<=6; i++) document.documentElement.style.setProperty(`--c${i}`, document.getElementById(`color-${i}`).value);
-    refreshColorPaletteSwatches();
+    writeSeatAppearanceSettingsToMainUi(readSeatAppearanceSettingsFromMainUi());
+    syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
     saveAndRender();
+}
+
+function initPrintSettingsPanel() {
+    const layout = document.getElementById('ps-panel-layout');
+    const colors = document.getElementById('ps-panel-colors');
+    const gender = document.getElementById('ps-panel-gender');
+    if (!layout || !colors || !gender || layout.dataset.inited === '1') return;
+    layout.dataset.inited = '1';
+    layout.innerHTML = `<div class="print-layout-table-wrap"><table class="print-layout-table"><thead><tr><th>項目</th><th>印刷</th><th>色</th><th>フォント</th></tr></thead><tbody>${SEAT_LAYOUT_FIXED_META.map(meta => `<tr class="ps-layout-row" data-layout-key="${meta.key}"><th scope="row">${meta.label}</th><td><input type="checkbox" id="ps-print-${meta.key}" aria-label="${meta.label}を印刷" onchange="setPrintLayoutField('${meta.key}', 'print', this.checked)"></td><td><select id="ps-color-${meta.key}" aria-label="${meta.label}の色番号" onchange="setPrintLayoutField('${meta.key}', 'colorNum', this.value)">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></td><td><div class="print-font-buttons" role="group" aria-label="${meta.label}のフォント">${SEAT_LAYOUT_FONT_KEYS.map(fontKey => `<button type="button" class="btn btn-outline ps-font-btn" data-layout-key="${meta.key}" data-font="${fontKey}" onclick="setPrintLayoutField('${meta.key}', 'fontKey', '${fontKey}')">${SEAT_LAYOUT_FONT_LABELS[fontKey]}</button>`).join('')}</div></td></tr>`).join('')}</tbody></table></div>`;
+    colors.innerHTML = `<div class="print-color-list">${[1,2,3,4,5,6].map(i => `<div class="print-color-row"><strong>色${i}</strong><button type="button" id="ps-color-swatch-${i}" class="color-swatch-btn ps-color-swatch" aria-label="色${i}のパレットを開く" aria-expanded="false" onclick="openPrintColorPalette(${i}, this)"></button><output id="ps-color-hex-${i}" class="print-color-hex"></output><button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(${i})">その他</button></div>`).join('')}</div><div id="ps-color-palette" class="print-color-palette" hidden></div>`;
+    gender.innerHTML = `<div class="print-gender-settings"><label class="print-gender-active"><input type="checkbox" id="ps-gb-active" onchange="setPrintGenderBorder('active', this.checked)"> 男女別の枠線を表示</label><label>男の色<select id="ps-gb-boy" onchange="setPrintGenderBorder('boy', this.value)">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label><label>女の色<select id="ps-gb-girl" onchange="setPrintGenderBorder('girl', this.value)">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label><label>表示スタイル<select id="ps-gb-style" onchange="setPrintGenderBorder('style', this.value)"><option value="solid">通常線 (実線 2px)</option><option value="thick">太線 (実線 4px)</option><option value="double">二重線 (double 4px)</option></select></label></div>`;
+    document.querySelector('.print-settings-tabs')?.addEventListener('keydown', handlePrintSettingsTabKeydown);
+    document.addEventListener('click', event => {
+        const palette = document.getElementById('ps-color-palette');
+        if (!palette || palette.hidden || !(event.target instanceof Element)) return;
+        if (!event.target.closest('#ps-color-palette, .ps-color-swatch')) closePrintColorPalette();
+    });
+    syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
+}
+
+function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) {
+    const settings = normalizeSeatAppearanceSettings(value);
+    settings.seatLayoutFields.forEach(field => {
+        const printInput = document.getElementById(`ps-print-${field.key}`);
+        const colorInput = document.getElementById(`ps-color-${field.key}`);
+        if (printInput) printInput.checked = field.print;
+        if (colorInput) colorInput.value = String(field.colorNum);
+        document.querySelectorAll(`.ps-font-btn[data-layout-key="${field.key}"]`).forEach(button => button.classList.toggle('seat-layout-font-btn--active', button.dataset.font === field.fontKey));
+    });
+    for (let i = 1; i <= 6; i++) {
+        const color = settings.colors[`c${i}`];
+        const swatch = document.getElementById(`ps-color-swatch-${i}`);
+        const hex = document.getElementById(`ps-color-hex-${i}`);
+        if (swatch) { swatch.style.backgroundColor = color; swatch.title = color; }
+        if (hex) hex.textContent = color;
+    }
+    const gb = settings.genderBorderData;
+    const active = document.getElementById('ps-gb-active');
+    const boy = document.getElementById('ps-gb-boy');
+    const girl = document.getElementById('ps-gb-girl');
+    const style = document.getElementById('ps-gb-style');
+    if (active) active.checked = gb.active;
+    if (boy) boy.value = gb.boy;
+    if (girl) girl.value = gb.girl;
+    if (style) style.value = gb.style;
+}
+
+function refreshPrintColorControls() {
+    if (!document.getElementById('ps-panel-colors')) return;
+    syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
+}
+
+function setPrintLayoutField(key, property, rawValue) {
+    commitPrintSettingsMutation(settings => {
+        const field = settings.seatLayoutFields.find(item => item.key === key);
+        if (field) field[property] = rawValue;
+    });
+}
+
+function setPrintGenderBorder(property, rawValue) {
+    commitPrintSettingsMutation(settings => { settings.genderBorderData[property] = rawValue; });
+}
+
+function selectPrintSettingsTab(tab, shouldFocus = false) {
+    const ids = ['layout', 'colors', 'gender'];
+    if (!ids.includes(tab)) tab = 'layout';
+    printPanelSelectedTab = tab;
+    ids.forEach(id => {
+        const button = document.getElementById(`ps-tab-${id}`);
+        const panel = document.getElementById(`ps-panel-${id}`);
+        const selected = id === tab;
+        if (button) { button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1; }
+        if (panel) panel.hidden = !selected;
+    });
+    if (shouldFocus) document.getElementById(`ps-tab-${tab}`)?.focus();
+    updatePrintPreviewChromeLayout();
+}
+
+function handlePrintSettingsTabKeydown(event) {
+    const tabs = ['layout', 'colors', 'gender'];
+    const current = tabs.findIndex(id => document.activeElement?.id === `ps-tab-${id}`);
+    if (current < 0) return;
+    let next = current;
+    if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') next = (current + tabs.length - 1) % tabs.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    selectPrintSettingsTab(tabs[next], true);
+}
+
+function togglePrintSettingsPanel(forceOpen) {
+    const panel = document.getElementById('print-settings-panel');
+    const toggle = document.getElementById('btn-print-settings-toggle');
+    if (!panel || !toggle) return;
+    const open = typeof forceOpen === 'boolean' ? forceOpen : panel.hidden;
+    const focusWasInside = panel.contains(document.activeElement);
+    panel.hidden = !open;
+    printPanelOpen = open;
+    document.body.classList.toggle('print-settings-closed', !open);
+    toggle.setAttribute('aria-expanded', String(open));
+    if (!open && focusWasInside) toggle.focus();
+    if (open && !focusWasInside) document.getElementById(`ps-tab-${printPanelSelectedTab}`)?.focus();
+    updatePrintPreviewChromeLayout();
+}
+
+function openPrintColorPalette(index, anchor) {
+    const palette = document.getElementById('ps-color-palette');
+    if (!palette) return;
+    if (!palette.hidden && palette.dataset.index === String(index)) { closePrintColorPalette(); return; }
+    printPaletteRestoreTarget = anchor;
+    palette.dataset.index = String(index);
+    palette.innerHTML = COLOR_PALETTE_PRESET.map(color => `<button type="button" class="color-palette-chip" data-color="${color}" style="background:${color}" aria-label="${color.toUpperCase()}"></button>`).join('');
+    palette.hidden = false;
+    anchor?.setAttribute('aria-expanded', 'true');
+    palette.querySelectorAll('.color-palette-chip').forEach(button => button.addEventListener('click', () => {
+        const color = button.dataset.color;
+        commitPrintSettingsMutation(settings => { settings.colors[`c${index}`] = color; });
+        closePrintColorPalette();
+    }));
+    palette.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closePrintColorPalette(true); } }, { once: true });
+    const selected = [...palette.querySelectorAll('.color-palette-chip')].find(button => button.dataset.color.toUpperCase() === getColorInput(index)?.value.toUpperCase());
+    (selected || palette.querySelector('.color-palette-chip'))?.focus();
+}
+
+function closePrintColorPalette(returnFocus = false) {
+    const palette = document.getElementById('ps-color-palette');
+    if (palette) { palette.hidden = true; palette.innerHTML = ''; delete palette.dataset.index; }
+    printPaletteRestoreTarget?.setAttribute('aria-expanded', 'false');
+    if (returnFocus) printPaletteRestoreTarget?.focus();
+    printPaletteRestoreTarget = null;
 }
 
 function resetPlacement() {
@@ -6315,26 +6615,18 @@ function drop(e, targetIdx) {
 // --- データ保存・復元拡張 ---
 function saveCurrentClassData() {
     syncSoftScoresFromInputs();
-    const colors = {};
-    for(let i=1;i<=6;i++) colors[`c${i}`] = document.getElementById(`color-${i}`).value;
-    const genderBorderButton = document.getElementById('btn-gender-border');
-    const genderBorderData = {
-        active: genderBorderButton ? genderBorderButton.classList.contains('btn-success') : false,
-        boy: document.getElementById('gb-boy-color') ? document.getElementById('gb-boy-color').value : '6',
-        girl: document.getElementById('gb-girl-color') ? document.getElementById('gb-girl-color').value : '5',
-        style: document.getElementById('gb-style') ? document.getElementById('gb-style').value : 'solid'
-    };
+    const appearance = readSeatAppearanceSettingsFromMainUi();
     const data = {
         students: currentStudents, rulesRaw: document.getElementById('overall-rules').value, layoutRaw: document.getElementById('layout-rules').value,
-        seatLayoutFields: collectSeatLayoutFromUI(),
+        seatLayoutFields: appearance.seatLayoutFields,
         ...exportFairnessSettings(),
         ...exportSoftScoreSettings(),
         ...exportEdgeSettings(),
-        inactiveSeats: Array.from(inactiveSeats), assignment: seatAssignment, histories: histories, recentShuffleRuns: recentShuffleRuns, colors: colors,
+        inactiveSeats: Array.from(inactiveSeats), assignment: seatAssignment, histories: histories, recentShuffleRuns: recentShuffleRuns, colors: appearance.colors,
         shuffleSeedInput: shuffleSeedInput,
         lastUsedShuffleSeed: lastUsedShuffleSeed,
         lastBackupAt: lastBackupAt,
-        genderBorderData: genderBorderData,
+        genderBorderData: appearance.genderBorderData,
         printInactiveMode: printInactiveMode === 'frame' ? 'frame' : 'hide'
     };
     localStorage.setItem(`${PREFIX}data_${appData.currentClassId}`, JSON.stringify(data));
@@ -6369,7 +6661,11 @@ function loadCurrentClassData() {
             }));
             document.getElementById('overall-rules').value = data.rulesRaw || '';
             document.getElementById('layout-rules').value = data.layoutRaw || '';
-            applySeatLayoutToUI(data.seatLayoutFields);
+            writeSeatAppearanceSettingsToMainUi({
+                seatLayoutFields: data.seatLayoutFields,
+                colors: data.colors,
+                genderBorderData: data.genderBorderData
+            });
             importFairnessSettings(data);
             importSoftScoreSettings(data);
             importEdgeSettings(data);
@@ -6392,26 +6688,6 @@ function loadCurrentClassData() {
                 totalScore: coerceStoredTotalScore(h.totalScore)
             }));
             recentShuffleRuns = loadRecentShuffleRuns(data.recentShuffleRuns, histories, lastUsedShuffleSeed);
-            if(data.colors) {
-                const colorFallback = DEFAULT_SEAT_COLORS;
-                for(let i=1;i<=6;i++) {
-                    const v = data.colors[`c${i}`];
-                    const el = document.getElementById(`color-${i}`);
-                    if (el) el.value = (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)) ? v : colorFallback[i-1];
-                }
-            }
-            
-            if(data.genderBorderData) {
-                document.getElementById('gb-boy-color').value = data.genderBorderData.boy || 6;
-                document.getElementById('gb-girl-color').value = data.genderBorderData.girl || 5;
-                document.getElementById('gb-style').value = data.genderBorderData.style || 'solid';
-                const btn = document.getElementById('btn-gender-border'); const panel = document.getElementById('gender-border-settings');
-                if(data.genderBorderData.active) {
-                    btn.classList.replace('btn-outline', 'btn-success'); btn.innerText = 'ON'; panel.style.display = 'block';
-                } else {
-                    btn.classList.replace('btn-success', 'btn-outline'); btn.innerText = 'OFF'; panel.style.display = 'none';
-                }
-            }
         } catch(e) { console.error("データ読み込みエラー", e); }
     } else {
         currentStudents = []; inactiveSeats.clear(); seatAssignment = new Array(TOTAL_SEATS).fill(null); histories = []; recentShuffleRuns = [];

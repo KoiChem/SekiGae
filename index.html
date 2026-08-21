@@ -262,13 +262,33 @@
             <label><input type="radio" name="print-orientation" value="landscape" onchange="setPrintOrientation(this.value)" checked> A4横</label>
         </fieldset>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-view-toggle" onclick="togglePrintView()">視点: 教員側</button>
+        <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-settings-toggle" aria-expanded="false" aria-controls="print-settings-panel" onclick="togglePrintSettingsPanel()">印刷設定</button>
         <button class="btn print-toolbar-btn" onclick="executePrint()">印刷・PDF保存</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-inactive-toggle" onclick="togglePrintInactiveDisplay()">空席: 非表示</button>
         <button class="btn btn-outline print-toolbar-btn" onclick="togglePrintMode()">キャンセル</button>
     </div>
-    <div class="print-preview-help">用紙の向きと視点を選択後、「印刷・PDF保存」を押してください</div>
+    <div class="print-preview-help">用紙の向き・視点・印刷設定を確認後、「印刷・PDF保存」を押してください</div>
 </div>
-<div id="print-root"></div>
+<div id="print-preview-stage">
+    <aside id="print-settings-panel" class="no-print" hidden aria-label="印刷設定">
+        <div class="print-settings-panel-head">
+            <div>
+                <h2>印刷設定</h2>
+                <p>メイン画面の設定と同期して保存されます</p>
+            </div>
+        </div>
+        <div class="print-settings-tabs" role="tablist" aria-label="印刷設定の種類">
+            <button type="button" id="ps-tab-layout" role="tab" aria-selected="true" aria-controls="ps-panel-layout" onclick="selectPrintSettingsTab('layout')">レイアウト</button>
+            <button type="button" id="ps-tab-colors" role="tab" aria-selected="false" aria-controls="ps-panel-colors" tabindex="-1" onclick="selectPrintSettingsTab('colors')">色</button>
+            <button type="button" id="ps-tab-gender" role="tab" aria-selected="false" aria-controls="ps-panel-gender" tabindex="-1" onclick="selectPrintSettingsTab('gender')">男女枠線</button>
+        </div>
+        <div id="ps-panel-layout" class="print-settings-tabpanel" role="tabpanel" aria-labelledby="ps-tab-layout"></div>
+        <div id="ps-panel-colors" class="print-settings-tabpanel" role="tabpanel" aria-labelledby="ps-tab-colors" hidden></div>
+        <div id="ps-panel-gender" class="print-settings-tabpanel" role="tabpanel" aria-labelledby="ps-tab-gender" hidden></div>
+        <div id="ps-status" class="sr-only" aria-live="polite"></div>
+    </aside>
+    <div id="print-root"></div>
+</div>
 
 <div id="sample-mode-banner" class="sample-mode-banner no-print" hidden>
     <span><strong>サンプル版</strong>：このページの変更は再読み込み時に初期状態へ戻ります。</span>
