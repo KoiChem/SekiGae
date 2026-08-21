@@ -266,40 +266,7 @@
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-inactive-toggle" onclick="togglePrintInactiveDisplay()">空席: 非表示</button>
         <button class="btn btn-outline print-toolbar-btn" onclick="togglePrintMode()">キャンセル</button>
     </div>
-    <section id="print-appearance-panel" class="print-appearance-panel" aria-labelledby="print-appearance-title">
-        <div class="print-appearance-heading">
-            <div>
-                <h2 id="print-appearance-title">印刷スタイル</h2>
-                <p>プレビューと印刷にのみ反映します</p>
-            </div>
-            <span id="print-appearance-status" class="print-appearance-status" aria-live="polite"></span>
-        </div>
-        <div class="print-appearance-controls">
-            <label class="print-appearance-field" for="print-font-mode">
-                <span>フォント</span>
-                <select id="print-font-mode" onchange="setPrintFontMode(this.value)">
-                    <option value="inherit">項目別設定を使用</option>
-                    <option value="gothic">ゴシック</option>
-                    <option value="mincho">明朝</option>
-                    <option value="maru">丸ゴシック</option>
-                    <option value="kyokasho">教科書体</option>
-                </select>
-            </label>
-            <fieldset class="print-appearance-field print-color-field">
-                <legend>文字色</legend>
-                <label class="print-unify-toggle"><input id="print-text-color-enabled" type="checkbox" onchange="setPrintTextColorEnabled(this.checked)"> 1色に統一</label>
-                <div class="print-color-control"><input id="print-text-color" type="color" value="#1F2937" aria-label="印刷文字の色" oninput="setPrintTextColor(this.value)"><output id="print-text-color-hex" for="print-text-color">#1F2937</output></div>
-            </fieldset>
-            <fieldset class="print-appearance-field print-color-field">
-                <legend>線の色</legend>
-                <label class="print-unify-toggle"><input id="print-line-color-enabled" type="checkbox" onchange="setPrintLineColorEnabled(this.checked)"> 1色に統一</label>
-                <div class="print-color-control"><input id="print-line-color" type="color" value="#4B5563" aria-label="印刷枠線の色" oninput="setPrintLineColor(this.value)"><output id="print-line-color-hex" for="print-line-color">#4B5563</output></div>
-                <small>男女別の枠線がONの席は、その設定色が優先されます</small>
-            </fieldset>
-        </div>
-        <button type="button" class="btn btn-outline print-reset-appearance" onclick="resetPrintAppearance()">標準に戻す</button>
-    </section>
-    <div class="print-preview-help">用紙の向き・視点・印刷スタイルを確認後、「印刷・PDF保存」を押してください</div>
+    <div class="print-preview-help">用紙の向きと視点を選択後、「印刷・PDF保存」を押してください</div>
 </div>
 <div id="print-root"></div>
 

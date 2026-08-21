@@ -4,16 +4,10 @@
     --boy-bg: #e9f0f5; --girl-bg: #f4eaee; --boy-border: #526f92; --girl-border: #865e7f;
     --c1: #1f2937; --c2: #4b5563; --c3: #d7263d; --c4: #386641; --c5: #0f7173; --c6: #f26d85;
 }
-:root {
-    --font-gothic: 'BIZ UDPGothic', 'Yu Gothic UI', 'Yu Gothic', 'Meiryo', sans-serif;
-    --font-mincho: 'BIZ UDMincho Medium', 'Yu Mincho', 'MS PMincho', serif;
-    --font-maru: 'HG丸ｺﾞｼｯｸM-PRO', 'HGS創英角ｺﾞｼｯｸUB', 'Meiryo', sans-serif;
-    --font-kyokasho: 'UD デジタル 教科書体 N-R', 'BIZ UDMincho Medium', 'Yu Mincho', serif;
-}
-.font-gothic { font-family: var(--font-gothic); }
-.font-mincho { font-family: var(--font-mincho); }
-.font-maru { font-family: var(--font-maru); }
-.font-kyokasho { font-family: var(--font-kyokasho); }
+.font-gothic { font-family: 'BIZ UDPGothic', 'Yu Gothic UI', 'Yu Gothic', 'Meiryo', sans-serif; }
+.font-mincho { font-family: 'BIZ UDMincho Medium', 'Yu Mincho', 'MS PMincho', serif; }
+.font-maru { font-family: 'HG丸ｺﾞｼｯｸM-PRO', 'HGS創英角ｺﾞｼｯｸUB', 'Meiryo', sans-serif; }
+.font-kyokasho { font-family: 'UD デジタル 教科書体 N-R', 'BIZ UDMincho Medium', 'Yu Mincho', serif; }
 
 * { box-sizing: border-box; }
 html { height: 100%; }
@@ -1150,25 +1144,7 @@ table.data-table { width: 100%; border-collapse: collapse; margin-top: 5px; font
 .print-orientation-options input { margin: 0; }
 .print-toolbar-btn { font-size: 1.05em; padding: 8px 18px; }
 .print-preview-help { margin-top: 7px; color: #475569; font-size: 0.82em; }
-.print-appearance-panel { width: min(100%, 880px); margin: 10px auto 0; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; box-sizing: border-box; text-align: left; }
-.print-appearance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.print-appearance-heading h2 { margin: 0; font-size: 1em; }
-.print-appearance-heading p { margin: 2px 0 0; color: #475569; font-size: 0.78em; }
-.print-appearance-status { min-height: 1.2em; color: #166534; font-size: 0.78em; text-align: right; }
-.print-appearance-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 9px; }
-.print-appearance-field { display: grid; gap: 5px; min-width: 0; margin: 0; padding: 0; border: 0; font-size: 0.85em; font-weight: bold; }
-.print-appearance-field select { width: 100%; min-height: 36px; padding: 4px 7px; font: inherit; font-weight: normal; }
-.print-color-field { align-content: start; }
-.print-color-field legend { padding: 0; }
-.print-unify-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; font-weight: normal; }
-.print-color-control { display: flex; align-items: center; gap: 7px; min-height: 40px; }
-.print-color-control input[type="color"] { width: 44px; height: 36px; padding: 2px; border: 1px solid #94a3b8; border-radius: 5px; background: #fff; }
-.print-color-control input[type="color"]:disabled { opacity: 0.45; cursor: not-allowed; }
-.print-color-control output { min-width: 4.8em; color: #334155; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; font-weight: normal; }
-.print-color-field small { color: #475569; font-size: 0.76em; font-weight: normal; line-height: 1.35; }
-.print-reset-appearance { min-height: 44px; margin-top: 10px; padding: 8px 14px; }
 #print-root { display: none; }
-#print-root { --print-custom-text-color: #1F2937; --print-custom-line-color: #4B5563; }
 body.print-mode {
     display: block;
     height: auto;
@@ -1196,7 +1172,6 @@ body.print-mode #print-root {
     padding-top: var(--print-toolbar-h, 88px);
     box-sizing: border-box;
 }
-.print-page-shell { margin: 0 auto; box-sizing: border-box; }
 .print-page {
     width: var(--print-page-width, 277mm);
     height: var(--print-page-height, 190mm);
@@ -1317,25 +1292,6 @@ body.print-orientation-portrait .print-seat-grid {
     font-weight: bold;
     transform: scaleY(-1);
 }
-#print-root.print-text-color-custom .seat-fixed-text,
-#print-root.print-text-color-custom .print-seat-label,
-#print-root.print-text-color-custom .print-class-name-in-desk,
-#print-root.print-text-color-custom .desk-history-memo-part { color: var(--print-custom-text-color) !important; }
-#print-root.print-line-color-custom .print-seat,
-#print-root.print-line-color-custom .print-seat-inactive,
-#print-root.print-line-color-custom .print-desk-class { border-color: var(--print-custom-line-color); }
-#print-root.print-font-gothic .seat-fixed-text,
-#print-root.print-font-gothic .print-seat-label,
-#print-root.print-font-gothic .print-class-name-in-desk { font-family: var(--font-gothic) !important; }
-#print-root.print-font-mincho .seat-fixed-text,
-#print-root.print-font-mincho .print-seat-label,
-#print-root.print-font-mincho .print-class-name-in-desk { font-family: var(--font-mincho) !important; }
-#print-root.print-font-maru .seat-fixed-text,
-#print-root.print-font-maru .print-seat-label,
-#print-root.print-font-maru .print-class-name-in-desk { font-family: var(--font-maru) !important; }
-#print-root.print-font-kyokasho .seat-fixed-text,
-#print-root.print-font-kyokasho .print-seat-label,
-#print-root.print-font-kyokasho .print-class-name-in-desk { font-family: var(--font-kyokasho) !important; }
 #print-root.student-view .print-classroom {
     flex-direction: column;
 }
@@ -1345,13 +1301,6 @@ body.print-orientation-portrait .print-seat-grid {
 #print-root.student-view .print-seat-content,
 #print-root.student-view .print-seat-label {
     transform: scaleX(-1);
-}
-body.print-panel-side #print-overlay { width: calc(100% - 306px); }
-body.print-panel-side #print-root { width: calc(100% - 306px); }
-body.print-panel-side #print-appearance-panel { position: fixed; top: var(--print-toolbar-h, 88px); right: 10px; width: 280px; max-height: calc(100dvh - var(--print-toolbar-h, 88px) - 10px); margin: 0; overflow-y: auto; }
-body.print-panel-docked #print-appearance-panel { max-height: min(310px, calc(100dvh - 170px)); overflow-y: auto; }
-@media (max-width: 719px) {
-    .print-appearance-controls { grid-template-columns: 1fr; }
 }
 
 @media print {
@@ -1395,8 +1344,6 @@ body.print-panel-docked #print-appearance-panel { max-height: min(310px, calc(10
         break-inside: avoid;
         page-break-inside: avoid;
     }
-    .print-page-shell { width: auto !important; height: auto !important; }
-    .print-page { transform: none !important; }
 }
 @media (max-width: 640px) {
     .tab-header { padding: 0 8px; flex-wrap: wrap; }
