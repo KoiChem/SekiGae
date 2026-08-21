@@ -132,9 +132,6 @@ const PREFIX = SAMPLE_MODE ? 'SekigaeKun_sample_v6_' : 'SekigaeKun_v6_';
 const SAMPLE_BACKUP_URL = './meibo_sample.json';
 /** クラス・バックアップとは独立した、この端末での画面表示の好み。 */
 const UI_LAYOUT_STORAGE_KEY = 'SekiGae_ui_layout';
-const SEAT_TEXT_SCALE_STORAGE_KEY = 'SekiGae_seat_text_scale';
-const SEAT_TEXT_SCALE_STEPS = Object.freeze([0.85, 1, 1.15, 1.3]);
-let seatTextScale = 1;
 const NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 const COLS_LABELS = ['a','b','c','d','e','f'];
 const SHUFFLE_ALGORITHM_VERSION = 'seed-v7-focused-reheat-repair';
@@ -1055,6 +1052,7 @@ function applyUiLayoutMode(value, shouldPersist = false) {
     document.body.classList.toggle('ui-layout-landscape', isLandscape);
     document.body.classList.toggle('ui-layout-portrait', !isLandscape);
     moveMainStatusControls(isLandscape);
+    setLandscapeSettingsDrawer(false);
 
     const button = document.getElementById('btn-ui-layout-toggle');
     if (button) {
@@ -1094,50 +1092,22 @@ function moveMainStatusControls(isLandscape) {
     else target.insertBefore(controls, target.firstChild);
 }
 
-function normalizeSeatTextScale(value) {
-    const parsed = Number.parseFloat(value);
-    if (!Number.isFinite(parsed)) return 1;
-    return SEAT_TEXT_SCALE_STEPS.reduce((closest, candidate) => (
-        Math.abs(candidate - parsed) < Math.abs(closest - parsed) ? candidate : closest
-    ), SEAT_TEXT_SCALE_STEPS[0]);
-}
-
-function updateSeatTextScaleUi() {
-    const currentIndex = SEAT_TEXT_SCALE_STEPS.indexOf(seatTextScale);
-    const value = document.getElementById('seat-text-zoom-value');
-    const decrease = document.getElementById('btn-seat-text-decrease');
-    const increase = document.getElementById('btn-seat-text-increase');
-    if (value) value.textContent = `${Math.round(seatTextScale * 100)}%`;
-    if (decrease) {
-        decrease.disabled = currentIndex <= 0;
-        decrease.setAttribute('aria-label', `座席文字を小さくする（現在 ${Math.round(seatTextScale * 100)}%）`);
-    }
-    if (increase) {
-        increase.disabled = currentIndex >= SEAT_TEXT_SCALE_STEPS.length - 1;
-        increase.setAttribute('aria-label', `座席文字を大きくする（現在 ${Math.round(seatTextScale * 100)}%）`);
+function setLandscapeSettingsDrawer(open) {
+    const isLandscape = document.body.classList.contains('ui-layout-landscape');
+    const isOpen = isLandscape && Boolean(open);
+    document.body.classList.toggle('landscape-settings-drawer-open', isOpen);
+    const button = document.getElementById('btn-settings-drawer-toggle');
+    if (button) {
+        button.textContent = isOpen ? '設定を閉じる' : '設定を開く';
+        button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     }
 }
 
-function applySeatTextScale(value, shouldPersist = false) {
-    seatTextScale = normalizeSeatTextScale(value);
-    updateSeatTextScaleUi();
-    if (shouldPersist) {
-        try { localStorage.setItem(SEAT_TEXT_SCALE_STORAGE_KEY, String(seatTextScale)); } catch (error) {}
-    }
-    if (!document.body.classList.contains('print-mode')) autoFitText();
-}
-
-function loadSeatTextScale() {
-    let stored = null;
-    try { stored = localStorage.getItem(SEAT_TEXT_SCALE_STORAGE_KEY); } catch (error) {}
-    applySeatTextScale(stored, false);
-}
-
-function adjustSeatTextScale(direction) {
-    const currentIndex = Math.max(0, SEAT_TEXT_SCALE_STEPS.indexOf(seatTextScale));
-    const nextIndex = Math.max(0, Math.min(SEAT_TEXT_SCALE_STEPS.length - 1, currentIndex + (direction < 0 ? -1 : 1)));
-    if (nextIndex === currentIndex) return;
-    applySeatTextScale(SEAT_TEXT_SCALE_STEPS[nextIndex], true);
+function toggleLandscapeSettingsDrawer(open) {
+    const next = typeof open === 'boolean'
+        ? open
+        : !document.body.classList.contains('landscape-settings-drawer-open');
+    setLandscapeSettingsDrawer(next);
 }
 
 // 盤面のDOM参照を統一し、同じquerySelector文字列の重複を減らす。
@@ -1416,7 +1386,6 @@ function scheduleAppViewportHeightSync() {
 function initializeApp() {
     syncAppViewportHeight();
     loadUiLayoutMode();
-    loadSeatTextScale();
     initSeatLayoutTable();
     initColorPaletteUI();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
@@ -2320,14 +2289,14 @@ function updateCounters() {
     document.getElementById('counter-students').innerText = currentStudents.length;
     document.getElementById('counter-seats').innerText = TOTAL_SEATS - inactiveSeats.size;
 
-    const wrap = document.getElementById('counter-gender-wrap');
     const boysEl = document.getElementById('counter-boys');
     const girlsEl = document.getElementById('counter-girls');
-    if (!wrap || !boysEl || !girlsEl) return;
+    if (!boysEl || !girlsEl) return;
 
     const hasAnyGender = currentStudents.some(s => s.gender === '男' || s.gender === '女');
     if (!hasAnyGender) {
-        wrap.style.display = 'none';
+        boysEl.innerText = '—';
+        girlsEl.innerText = '—';
         return;
     }
     let boys = 0, girls = 0;
@@ -2337,7 +2306,6 @@ function updateCounters() {
     });
     boysEl.innerText = boys;
     girlsEl.innerText = girls;
-    wrap.style.display = 'inline';
 }
 
 // --- クラス管理 ---
@@ -5370,7 +5338,7 @@ function autoFitText() {
             const fontFamily = sample ? getComputedStyle(sample).fontFamily : null;
             const lineHeight = getMainSeatRowLineHeight();
             document.querySelectorAll('.seat-content').forEach(el => {
-                fitFixedSeatRows(el, nRef, rowSizes, fontFamily, seatTextScale, lineHeight);
+                fitFixedSeatRows(el, nRef, rowSizes, fontFamily, 1, lineHeight);
                 el.classList.add('is-fitted');
             });
         });

@@ -26,23 +26,23 @@ body { margin: 0; padding: 0; background-color: var(--bg); color: var(--primary)
 .tab-content.active { display: flex; }
 
 /* --- 画面レイアウト（横を既定、利用者が縦へ切替可能） --- */
-body.ui-layout-landscape { --landscape-sidebar-width: clamp(320px, 27vw, 390px); }
 body.ui-layout-landscape #tab-main.active {
     display: grid;
     width: 100%;
     max-width: 1480px;
     margin: 0 auto;
     padding: 14px 20px;
-    grid-template-columns: minmax(0, 1fr) var(--landscape-sidebar-width);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-        "alert alert"
-        "actions actions"
-        "legend legend"
-        "classroom settings";
+        "alert"
+        "actions"
+        "legend"
+        "classroom";
     grid-template-rows: auto auto auto minmax(0, 1fr);
     gap: 10px 16px;
     min-height: 0;
     overflow: hidden;
+    position: relative;
     align-items: stretch;
     align-content: stretch;
 }
@@ -68,7 +68,7 @@ body.ui-layout-landscape .action-bar #btn-commit { padding: 8px 16px !important;
 body.ui-layout-landscape #tab-main > .preview-points-legend { grid-area: legend; max-width: none; margin: 0; }
 body.ui-layout-landscape #tab-main > .classroom-wrapper {
     grid-area: classroom;
-    width: min(100%, 840px);
+    width: min(100%, 1100px);
     height: 100%;
     min-height: 0;
     margin: 0 auto;
@@ -86,19 +86,39 @@ body.ui-layout-landscape #seat-grid .seat-fixed-row { padding: 0 1px; }
 body.ui-layout-landscape #seat-grid .seat-fixed-text { line-height: 1; }
 body.ui-layout-landscape .classroom-wrapper .desk-row { flex: 0 0 auto; margin-top: 8px; }
 body.ui-layout-landscape #tab-main > .settings-bottom {
-    grid-area: settings;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
-    height: 100%;
+    position: absolute;
+    z-index: 20;
+    top: 14px;
+    right: 20px;
+    bottom: 14px;
+    width: min(390px, calc(100% - 40px));
     min-height: 0;
     max-width: none;
     margin: 0;
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    background: #f8fafc;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
-    align-self: stretch;
+    transform: translateX(calc(100% + 32px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.2s ease, opacity 0.2s ease, visibility 0s linear 0.2s;
+}
+body.ui-layout-landscape.landscape-settings-drawer-open #tab-main > .settings-bottom {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
 }
 body.ui-layout-landscape .settings-bottom .panel { margin: 0; }
 
@@ -759,16 +779,19 @@ body.exception-mode-active .settings-bottom { pointer-events: none; filter: gray
 .action-bar-top, .action-bar-bottom { display: flex; justify-content: space-between; align-items: center; width: 100%; }
 .main-status-controls { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .main-class-select { min-width: 160px; font-size: 1em; font-weight: bold; }
-.main-class-summary { padding: 5px 15px; border: 1px solid #ddd; border-radius: 5px; background: #fff; color: #2c3e50; font-weight: bold; white-space: nowrap; }
+.main-class-summary { display: flex; align-items: center; gap: 0.85em; padding: 5px 15px; border: 1px solid #ddd; border-radius: 5px; background: #fff; color: #2c3e50; font-weight: bold; white-space: nowrap; }
+.main-class-summary-item { display: inline-flex; gap: 0.3em; align-items: baseline; }
+.main-class-summary-item > span:first-child { font-size: 0.85em; color: #7f8c8d; }
+.main-class-summary-item > span:last-child { font-size: 1.05em; }
 .settings-status-slot:empty { display: none; }
-body.ui-layout-landscape .settings-status-slot .main-status-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 10px; border: 1px solid #cbd5e1; border-radius: 7px; background: #f8fafc; }
+body.ui-layout-landscape .settings-status-slot .main-status-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 0; }
 body.ui-layout-landscape .settings-status-slot .main-class-select { width: 100%; min-width: 0; }
-body.ui-layout-landscape .settings-status-slot .main-class-summary { padding: 5px 8px; font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; }
-.seat-text-zoom-controls { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 3px 5px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; white-space: nowrap; flex-shrink: 0; }
-.seat-text-zoom-label { color: #475569; font-size: 0.8em; font-weight: bold; }
-.seat-text-zoom-value { min-width: 3.5em; color: #334155; font-size: 0.84em; font-weight: bold; text-align: center; font-variant-numeric: tabular-nums; }
-.seat-text-zoom-controls .seat-text-zoom-btn { min-width: 28px; padding: 3px 7px; line-height: 1.1; }
-body.ui-layout-landscape .seat-text-zoom-controls .seat-text-zoom-btn { padding: 3px 7px !important; font-size: 0.88em !important; }
+.settings-drawer-toggle,
+.settings-drawer-header { display: none; }
+body.ui-layout-landscape .settings-drawer-toggle { display: inline-flex; align-items: center; }
+body.ui-layout-landscape .settings-drawer-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #cbd5e1; }
+body.ui-layout-landscape .settings-drawer-header .btn { padding: 5px 10px !important; }
+body.ui-layout-landscape .settings-status-slot .main-class-summary { justify-content: space-between; padding: 6px 8px; font-size: 0.9em; }
 .shuffle-seed-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; padding: 7px 10px; border: 1px solid #d7dee5; border-radius: 5px; background: #f8fafc; font-size: 0.82em; color: #475569; }
 .shuffle-seed-row label { font-weight: bold; color: var(--primary); }
 .shuffle-seed-row input { width: 150px; font-variant-numeric: tabular-nums; }
@@ -1225,9 +1248,8 @@ body.print-orientation-portrait {
     transform: scaleY(-1);
     margin: 0 auto;
 }
-/* A4縦は左端を印刷領域から1.5mmにそろえ、行間を作らない。 */
+/* A4縦も横と同じ1mmの座席間隔を保ち、左端を印刷領域から1.5mmにそろえる。 */
 body.print-orientation-portrait .print-seat-grid {
-    row-gap: 0;
     margin-left: 0;
     margin-right: 0;
 }

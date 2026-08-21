@@ -293,17 +293,14 @@
         <div class="action-bar-top">
             <div class="main-status-controls" id="main-status-controls">
                 <select id="class-select" onchange="switchClass('class-select')" aria-label="対象クラス" class="main-class-select"></select>
-                <div class="main-class-summary">
-                    <span style="font-size: 0.85em; color: #7f8c8d;">生徒数:</span> <span id="counter-students" style="font-size: 1.1em;">0</span> 名<span id="counter-gender-wrap" style="display:none;"> &nbsp;|&nbsp; <span style="font-size: 0.85em; color: #7f8c8d;">男子</span> <span id="counter-boys" style="font-size: 1.05em;">0</span> &nbsp;<span style="font-size: 0.85em; color: #7f8c8d;">女子</span> <span id="counter-girls" style="font-size: 1.05em;">0</span></span> &nbsp;|&nbsp;
-                    <span style="font-size: 0.85em; color: #7f8c8d;">有効座席:</span> <span id="counter-seats" style="font-size: 1.1em;">42</span> 席
+                <div class="main-class-summary" aria-live="polite">
+                    <span class="main-class-summary-item"><span>男子</span><span id="counter-boys">—</span></span>
+                    <span class="main-class-summary-item"><span>女子</span><span id="counter-girls">—</span></span>
+                    <span class="main-class-summary-item"><span>計</span><span id="counter-students">0</span></span>
+                    <span class="main-class-summary-item"><span>有効座席</span><span id="counter-seats">42</span></span>
                 </div>
             </div>
-            <div class="seat-text-zoom-controls" role="group" aria-label="座席文字の大きさ">
-                <span class="seat-text-zoom-label">座席文字</span>
-                <button type="button" class="btn btn-outline seat-text-zoom-btn" id="btn-seat-text-decrease" onclick="adjustSeatTextScale(-1)" aria-label="座席文字を小さくする">−</button>
-                <output class="seat-text-zoom-value" id="seat-text-zoom-value" aria-live="polite">100%</output>
-                <button type="button" class="btn btn-outline seat-text-zoom-btn" id="btn-seat-text-increase" onclick="adjustSeatTextScale(1)" aria-label="座席文字を大きくする">＋</button>
-            </div>
+            <button type="button" class="btn btn-outline settings-drawer-toggle" id="btn-settings-drawer-toggle" onclick="toggleLandscapeSettingsDrawer()" aria-expanded="false" aria-controls="settings-bottom">設定を開く</button>
         </div>
 
         <div class="action-bar-bottom">
@@ -337,7 +334,11 @@
         <div class="seat-grid" id="seat-grid"></div>
     </div>
 
-    <div class="settings-bottom no-print">
+    <div class="settings-bottom no-print" id="settings-bottom">
+        <div class="settings-drawer-header">
+            <strong>設定</strong>
+            <button type="button" class="btn btn-outline" onclick="toggleLandscapeSettingsDrawer(false)">閉じる</button>
+        </div>
         <div class="settings-status-slot" id="settings-status-slot"></div>
         <div class="panel">
             <div class="flex-row" style="justify-content: space-between; border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 8px;">
