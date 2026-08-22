@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260822-portrait-print-settings">
+<link rel="stylesheet" href="styles.css?v=20260822-compact-print-inspector">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -272,8 +272,11 @@
 
 <div id="print-overlay" class="no-print">
     <div class="print-toolbar-head">
-        <div id="print-preview-title" class="print-preview-title">印刷プレビュー（A4横1枚にクラス名＋全座席を最適化）</div>
-        <button class="btn btn-outline print-toolbar-cancel" onclick="togglePrintMode()">キャンセル</button>
+        <div id="print-preview-title" class="print-preview-title">印刷プレビュー</div>
+        <div class="print-toolbar-primary-actions">
+            <button class="btn print-toolbar-print" onclick="executePrint()">印刷・PDF</button>
+            <button class="btn btn-outline print-toolbar-cancel" onclick="togglePrintMode()" aria-label="印刷プレビューを閉じる" title="印刷プレビューを閉じる"><span class="print-toolbar-cancel-text">閉じる</span><span class="print-toolbar-cancel-icon" aria-hidden="true">×</span></button>
+        </div>
     </div>
     <div class="print-toolbar-controls">
         <fieldset class="print-orientation-options" aria-label="印刷する用紙の向き">
@@ -283,21 +286,23 @@
         </fieldset>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-view-toggle" onclick="togglePrintView()">視点: 教員側</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-settings-toggle" aria-expanded="false" aria-controls="print-settings-panel" onclick="togglePrintSettingsPanel()">印刷設定</button>
-        <button class="btn print-toolbar-btn" onclick="executePrint()">印刷・PDF保存</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-inactive-toggle" onclick="togglePrintInactiveDisplay()">空席: 非表示</button>
     </div>
-    <div class="print-preview-help">用紙の向き・視点・印刷設定を確認後、「印刷・PDF保存」を押してください</div>
+    <div class="print-preview-help sr-only">用紙の向き・視点・印刷設定を確認後、「印刷・PDF」を押してください</div>
 </div>
 <div id="print-preview-stage">
     <aside id="print-settings-panel" class="no-print" hidden aria-label="印刷設定">
         <div class="print-settings-panel-head">
-            <div>
-                <h2>印刷設定</h2>
-                <p>メイン画面の設定と同期して保存されます</p>
+            <h2>印刷設定</h2>
+            <span class="print-settings-autosave">自動保存</span>
+        </div>
+        <div class="print-settings-grid">
+            <div id="ps-panel-layout" class="print-settings-section"></div>
+            <div class="print-settings-side-stack">
+                <div id="ps-panel-colors" class="print-settings-section"></div>
+                <div id="ps-panel-gender" class="print-settings-section"></div>
             </div>
         </div>
-        <div id="ps-panel-layout" class="print-settings-section"></div>
-        <div id="ps-panel-gender" class="print-settings-section"></div>
         <div id="ps-status" class="sr-only" aria-live="polite"></div>
     </aside>
     <div id="print-root"></div>
@@ -330,7 +335,7 @@
                     <span class="main-class-summary-item"><span class="main-class-summary-label">男子</span><span class="main-class-summary-value" id="counter-boys">—</span><span class="main-class-summary-unit">名</span></span>
                     <span class="main-class-summary-item"><span class="main-class-summary-label">女子</span><span class="main-class-summary-value" id="counter-girls">—</span><span class="main-class-summary-unit">名</span></span>
                     <span class="main-class-summary-item"><span class="main-class-summary-label">計</span><span class="main-class-summary-value" id="counter-students">0</span><span class="main-class-summary-unit">名</span></span>
-                    <span class="main-class-summary-item"><span class="main-class-summary-label">有効座席</span><span class="main-class-summary-value" id="counter-seats">42</span><span class="main-class-summary-unit">席</span></span>
+                    <span class="main-class-summary-item" aria-label="有効座席数" title="有効座席数"><span class="main-class-summary-label">座席</span><span class="main-class-summary-value" id="counter-seats">42</span><span class="main-class-summary-unit">席</span></span>
                 </div>
             </div>
         </div>
@@ -704,6 +709,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260822-portrait-print-settings"></script>
+<script src="app.js?v=20260822-compact-print-inspector"></script>
 </body>
 </html>
