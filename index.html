@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260821-print-preview-a4-sizing">
+<link rel="stylesheet" href="styles.css?v=20260822-portrait-print-settings">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -271,7 +271,10 @@
 </div>
 
 <div id="print-overlay" class="no-print">
-    <div id="print-preview-title" class="print-preview-title">印刷プレビュー（A4横1枚にクラス名＋全座席を最適化）</div>
+    <div class="print-toolbar-head">
+        <div id="print-preview-title" class="print-preview-title">印刷プレビュー（A4横1枚にクラス名＋全座席を最適化）</div>
+        <button class="btn btn-outline print-toolbar-cancel" onclick="togglePrintMode()">キャンセル</button>
+    </div>
     <div class="print-toolbar-controls">
         <fieldset class="print-orientation-options" aria-label="印刷する用紙の向き">
             <legend>用紙の向き</legend>
@@ -282,7 +285,6 @@
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-settings-toggle" aria-expanded="false" aria-controls="print-settings-panel" onclick="togglePrintSettingsPanel()">印刷設定</button>
         <button class="btn print-toolbar-btn" onclick="executePrint()">印刷・PDF保存</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-inactive-toggle" onclick="togglePrintInactiveDisplay()">空席: 非表示</button>
-        <button class="btn btn-outline print-toolbar-btn" onclick="togglePrintMode()">キャンセル</button>
     </div>
     <div class="print-preview-help">用紙の向き・視点・印刷設定を確認後、「印刷・PDF保存」を押してください</div>
 </div>
@@ -294,12 +296,8 @@
                 <p>メイン画面の設定と同期して保存されます</p>
             </div>
         </div>
-        <div class="print-settings-tabs" role="tablist" aria-label="印刷設定の種類">
-            <button type="button" id="ps-tab-layout" role="tab" aria-selected="true" aria-controls="ps-panel-layout" onclick="selectPrintSettingsTab('layout')">レイアウト</button>
-            <button type="button" id="ps-tab-gender" role="tab" aria-selected="false" aria-controls="ps-panel-gender" tabindex="-1" onclick="selectPrintSettingsTab('gender')">男女枠線</button>
-        </div>
-        <div id="ps-panel-layout" class="print-settings-tabpanel" role="tabpanel" aria-labelledby="ps-tab-layout"></div>
-        <div id="ps-panel-gender" class="print-settings-tabpanel" role="tabpanel" aria-labelledby="ps-tab-gender" hidden></div>
+        <div id="ps-panel-layout" class="print-settings-section"></div>
+        <div id="ps-panel-gender" class="print-settings-section"></div>
         <div id="ps-status" class="sr-only" aria-live="polite"></div>
     </aside>
     <div id="print-root"></div>
@@ -388,7 +386,6 @@
             </table>
             <input type="hidden" id="layout-rules" value="">
             
-            <h3 style="margin-top:8px;">色</h3>
             <div id="color-palette-group" class="color-palette-group">
                 <div class="color-palette-row">
                     <span class="color-palette-label">1</span>
@@ -472,29 +469,33 @@
                     <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-three-previous" onclick="applyRecentShuffleSeed(3)" disabled>3回前: —</button>
                 </div>
             </div>
-            <p class="local-data-note">データはこのパソコンのブラウザ内にのみ保存されます。定期的にバックアップ保存してください。</p>
-            <label for="history-select" style="font-size:0.8em; font-weight:bold;">過去の配置を盤面に復元</label>
-            <div class="flex-row" style="margin-bottom: 6px;">
+            <div class="history-management-block">
+                <label for="history-memo-input" class="history-management-label">配置名（選択中の履歴）</label>
+                <div class="flex-row history-management-row">
+                    <input type="text" id="history-memo-input" maxlength="10" placeholder="配置名（全角10文字まで）" style="flex-grow:1;">
+                    <button class="btn btn-outline" onclick="saveHistoryMemo()">名前を保存</button>
+                </div>
+            </div>
+            <div class="history-management-block">
+            <label for="history-select" class="history-management-label">過去の配置を盤面に復元</label>
+            <div class="flex-row history-management-row">
                 <select id="history-select" style="flex-grow:1;"></select>
                 <button class="btn btn-danger" style="padding: 8px 10px;" onclick="deleteSelectedHistory()" title="選択した履歴を削除">削除</button>
             </div>
-            <div class="flex-row" style="margin-bottom: 10px;">
-                <input type="text" id="history-memo-input" maxlength="10" placeholder="メモ（全角10文字まで）" style="flex-grow:1;">
-                <button class="btn btn-outline" onclick="saveHistoryMemo()">メモ保存</button>
-            </div>
-            <div class="flex-row" style="margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div class="flex-row history-extra-actions">
                 <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="exportHistoryLastTwoDigitsToClipboard()" title="履歴を選んだときはその配置。未選択時は現在の盤面（確定／プレビュー）。教員視点固定（教卓が下）で、7×6 の座席表形式（1席=1セル）でコピー">外部座席表用・番号コピー</button>
                 <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して、確認後に履歴へ保存します">Excelの座席表を取り込む</button>
             </div>
-            <button class="btn btn-danger" style="margin-top:5px; width:100%; font-size:0.85em;" onclick="clearAllHistories()">クラス履歴リセット</button>
-            
-            <hr style="border:none; border-top:1px solid #ddd; margin: 10px 0;">
-            <button class="btn btn-outline" style="width:100%; font-size:0.85em; margin-bottom:5px;" onclick="openExportBackupModal()">バックアップ保存</button>
-            <p id="backup-status" class="backup-status">最終バックアップ: —</p>
-            <div class="flex-row">
-                <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
-                <button type="button" class="btn btn-outline" style="font-size:0.85em; flex:1;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
             </div>
+            <p class="local-data-note">データはこのパソコンのブラウザ内にのみ保存されます。定期的にバックアップ保存してください。</p>
+            <div class="backup-actions">
+                <button class="btn btn-outline" style="font-size:0.85em;" onclick="openExportBackupModal()">バックアップ保存</button>
+                <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
+            </div>
+            <p id="backup-status" class="backup-status">最終バックアップ: —</p>
+            <hr class="history-danger-divider">
+            <button class="btn btn-danger history-reset-button" onclick="clearAllHistories()">クラス履歴リセット</button>
         </div>
     </div>
 </div>
@@ -703,6 +704,6 @@
     </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=20260822-portrait-print-settings"></script>
 </body>
 </html>
