@@ -177,8 +177,8 @@ const SEAT_LAYOUT_FIXED_META = [
     { key: 'id', label: '番号', size: 'S', align: 'R', colorDefault: 2 },
     { key: 'kana', label: 'かな', size: 'M', align: 'C', colorDefault: 2 },
     { key: 'name', label: '氏名', size: 'L', align: 'C', colorDefault: 1 },
-    { key: 'attr1', label: '属性1', size: 'S', align: 'C', colorDefault: 2 },
-    { key: 'attr2', label: '属性2', size: 'S', align: 'C', colorDefault: 2 }
+    { key: 'attr1', label: '属性1', shortLabel: '属1', size: 'S', align: 'C', colorDefault: 2 },
+    { key: 'attr2', label: '属性2', shortLabel: '属2', size: 'S', align: 'C', colorDefault: 2 }
 ];
 /** 項目ごとのフォント（CSS の .font-* と対応） */
 const SEAT_LAYOUT_FONT_KEYS = ['gothic', 'mincho', 'maru', 'kyokasho'];
@@ -1466,7 +1466,7 @@ window.onload = async () => {
 };
 
 /** テーブル DOM 変更時はバージョンを上げる（古いキャッシュでフォント列が欠けるのを防ぐ） */
-const SEAT_LAYOUT_TABLE_DOM_VERSION = '3';
+const SEAT_LAYOUT_TABLE_DOM_VERSION = '4';
 
 function initSeatLayoutTable() {
     const tbody = document.getElementById('seat-layout-tbody');
@@ -1480,7 +1480,7 @@ function initSeatLayoutTable() {
     tbody.dataset.inited = '1';
     tbody.innerHTML = SEAT_LAYOUT_FIXED_META.map(meta => `
         <tr data-layout-key="${meta.key}">
-            <td style="padding:6px 8px; border:1px solid #ddd;">${meta.label}</td>
+            <td style="padding:6px 8px; border:1px solid #ddd;" title="${meta.label}" aria-label="${meta.label}">${meta.shortLabel || meta.label}</td>
             <td style="text-align:center;border:1px solid #ddd;"><input type="checkbox" id="sl-print-${meta.key}" checked onchange="saveAndRender()"></td>
             <td style="padding:4px;border:1px solid #ddd;">
                 <select id="sl-color-${meta.key}" onchange="saveAndRender()" style="width:100%;">
@@ -1595,14 +1595,17 @@ function writeGenderBorderDataToMainUi(value) {
     if (style) style.value = data.style;
     applyColorControlSurface(boy, getColorInput(Number(data.boy))?.value || DEFAULT_SEAT_COLORS[5]);
     applyColorControlSurface(girl, getColorInput(Number(data.girl))?.value || DEFAULT_SEAT_COLORS[4]);
-    if (btn) {
-        btn.classList.toggle('btn-success', data.active);
-        btn.classList.toggle('btn-outline', !data.active);
-        btn.textContent = data.active ? 'ON' : 'OFF';
-        btn.setAttribute('aria-pressed', String(data.active));
-    }
+    updateGenderBorderToggleButton(btn, data.active);
     // 現行UIではOFFでも設定欄を常時表示する。旧UI由来のインライン非表示だけを解除する。
     if (panel) panel.style.removeProperty('display');
+}
+
+function updateGenderBorderToggleButton(button, active) {
+    if (!button) return;
+    button.classList.toggle('btn-success', active);
+    button.classList.toggle('btn-outline', !active);
+    button.textContent = active ? 'ON' : 'OFF';
+    button.setAttribute('aria-pressed', String(active));
 }
 
 function normalizeSeatAppearanceSettings(value) {
@@ -3147,7 +3150,7 @@ function createPrintColorControls() {
 }
 
 function createPrintLayoutTable(metas) {
-    return `<div class="print-layout-table-wrap"><table class="print-layout-table"><thead><tr><th>項目</th><th>印刷</th><th>色</th><th>フォント</th></tr></thead><tbody>${metas.map(meta => `<tr class="ps-layout-row" data-layout-key="${meta.key}"><th scope="row">${meta.label}</th><td><label class="ps-checkbox-target"><input type="checkbox" id="ps-print-${meta.key}" data-layout-key="${meta.key}" data-layout-property="print" aria-label="${meta.label}を印刷"></label></td><td><label class="ps-color-field"><select id="ps-color-${meta.key}" data-layout-key="${meta.key}" data-layout-property="colorNum" aria-label="${meta.label}の色番号">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label></td><td><select id="ps-font-${meta.key}" class="ps-font-select" data-layout-key="${meta.key}" data-layout-property="fontKey" aria-label="${meta.label}のフォント">${SEAT_LAYOUT_FONT_KEYS.map(fontKey => `<option value="${fontKey}">${SEAT_LAYOUT_FONT_LABELS[fontKey]}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
+    return `<div class="print-layout-table-wrap"><table class="print-layout-table"><thead><tr><th>項目</th><th>印刷</th><th>色</th><th>フォント</th></tr></thead><tbody>${metas.map(meta => `<tr class="ps-layout-row" data-layout-key="${meta.key}"><th scope="row" title="${meta.label}" aria-label="${meta.label}">${meta.shortLabel || meta.label}</th><td><label class="ps-checkbox-target"><input type="checkbox" id="ps-print-${meta.key}" data-layout-key="${meta.key}" data-layout-property="print" aria-label="${meta.label}を印刷"></label></td><td><label class="ps-color-field"><select id="ps-color-${meta.key}" data-layout-key="${meta.key}" data-layout-property="colorNum" aria-label="${meta.label}の色番号">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label></td><td><select id="ps-font-${meta.key}" class="ps-font-select" data-layout-key="${meta.key}" data-layout-property="fontKey" aria-label="${meta.label}のフォント">${SEAT_LAYOUT_FONT_KEYS.map(fontKey => `<option value="${fontKey}">${SEAT_LAYOUT_FONT_LABELS[fontKey]}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function initPrintSettingsPanel() {
@@ -3162,15 +3165,18 @@ function initPrintSettingsPanel() {
     ].map(keys => keys.map(key => SEAT_LAYOUT_FIXED_META.find(meta => meta.key === key)).filter(Boolean));
     layout.innerHTML = `<div class="print-layout-groups">${fixedGroups.map(metas => `<div class="print-layout-group">${createPrintLayoutTable(metas)}</div>`).join('')}</div>`;
     colors.innerHTML = createPrintColorControls();
-    gender.innerHTML = `<div class="print-gender-settings"><label class="print-gender-active"><span>男女枠線</span><input type="checkbox" id="ps-gb-active" data-gender-property="active"></label><div class="print-gender-controls"><label class="print-gender-field"><span>男</span><span class="print-gender-select"><select id="ps-gb-boy" data-gender-property="boy" aria-label="男子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field"><span>女</span><span class="print-gender-select"><select id="ps-gb-girl" data-gender-property="girl" aria-label="女子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field print-gender-style"><span>線</span><select id="ps-gb-style" data-gender-property="style" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label></div></div>`;
+    gender.innerHTML = `<div class="print-gender-settings"><div class="print-gender-active"><span>男女枠線</span><button id="ps-gb-active" class="btn btn-outline print-gender-toggle" type="button" aria-pressed="false">OFF</button></div><div class="print-gender-controls"><label class="print-gender-field"><span>男</span><span class="print-gender-select"><select id="ps-gb-boy" data-gender-property="boy" aria-label="男子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field"><span>女</span><span class="print-gender-select"><select id="ps-gb-girl" data-gender-property="girl" aria-label="女子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field print-gender-style"><span>線</span><select id="ps-gb-style" data-gender-property="style" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label></div></div>`;
     layout.querySelectorAll('[data-layout-property]').forEach(control => control.addEventListener('change', () => {
         const value = control.dataset.layoutProperty === 'print' ? control.checked : control.value;
         setPrintLayoutField(control.dataset.layoutKey, control.dataset.layoutProperty, value);
     }));
     gender.querySelectorAll('[data-gender-property]').forEach(control => control.addEventListener('change', () => {
-        const value = control.dataset.genderProperty === 'active' ? control.checked : control.value;
-        setPrintGenderBorder(control.dataset.genderProperty, value);
+        setPrintGenderBorder(control.dataset.genderProperty, control.value);
     }));
+    gender.querySelector('#ps-gb-active')?.addEventListener('click', () => {
+        const active = readSeatAppearanceSettingsFromMainUi().genderBorderData.active;
+        setPrintGenderBorder('active', !active);
+    });
     const colorControls = document.getElementById('ps-color-controls');
     colorControls?.addEventListener('click', event => {
         if (!(event.target instanceof Element)) return;
@@ -3231,7 +3237,7 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
     const boy = document.getElementById('ps-gb-boy');
     const girl = document.getElementById('ps-gb-girl');
     const style = document.getElementById('ps-gb-style');
-    if (active) active.checked = gb.active;
+    updateGenderBorderToggleButton(active, gb.active);
     if (boy) {
         boy.value = gb.boy;
         applyColorControlSurface(boy, settings.colors[`c${gb.boy}`]);
