@@ -284,7 +284,7 @@
             <label><input type="radio" name="print-orientation" value="portrait" onchange="setPrintOrientation(this.value)"> A4縦</label>
             <label><input type="radio" name="print-orientation" value="landscape" onchange="setPrintOrientation(this.value)" checked> A4横</label>
         </fieldset>
-        <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-view-toggle" onclick="togglePrintView()">視点: 教員側</button>
+        <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-view-toggle" onclick="togglePrintView()">教員視点</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-settings-toggle" aria-expanded="false" aria-controls="print-settings-panel" onclick="togglePrintSettingsPanel()">印刷設定</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-inactive-toggle" onclick="togglePrintInactiveDisplay()">空席: 非表示</button>
     </div>
@@ -318,7 +318,7 @@
     <div class="tab-utility-actions" aria-label="使い方、表示と印刷">
         <a class="btn btn-outline tab-utility-btn" href="./guide.html">使い方</a>
         <button type="button" class="btn btn-outline tab-utility-btn" id="btn-ui-layout-toggle" onclick="toggleUiLayoutMode()" aria-pressed="true">画面: 横</button>
-        <button class="btn btn-outline tab-utility-btn" id="btn-main-view-toggle" onclick="toggleView()">視点: 教員側</button>
+        <button class="btn btn-outline tab-utility-btn" id="btn-main-view-toggle" onclick="toggleView()">教員視点</button>
         <button class="btn btn-outline tab-utility-btn" onclick="togglePrintMode()">印刷プレビュー</button>
     </div>
 </div>
@@ -346,11 +346,11 @@
                 <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="openSortModal()">整列</button>
                 <button class="btn btn-outline seat-action-button" style="padding: 10px 15px;" onclick="resetPlacement()">クリア</button>
             </div>
-            <div class="flex-row" style="gap: 10px;">
-                <button class="btn btn-outline" id="btn-show-log" style="display:none; padding: 10px 15px;" onclick="showLogModal()">詳細ログ</button>
-                <button class="btn btn-outline" id="btn-undo-manual-swap" style="display:none; padding: 10px 15px;" onclick="undoLastManualSwap()">手動入替を戻す</button>
-                <button class="btn btn-outline" id="btn-cancel-preview" style="display:none; padding: 10px 15px;" onclick="cancelPreview()">キャンセル</button>
-                <button class="btn" id="btn-commit" style="padding: 10px 25px; font-size: 1.2em; display:none;" onclick="commitSeats()">座席を確定</button>
+            <div class="flex-row preview-action-buttons is-action-group-empty" style="gap: 10px;">
+                <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-show-log" style="padding: 10px 15px;" onclick="showLogModal()">詳細ログ</button>
+                <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-undo-manual-swap" style="padding: 10px 15px;" onclick="undoLastManualSwap()">手動入替を戻す</button>
+                <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-cancel-preview" style="padding: 10px 15px;" onclick="cancelPreview()">キャンセル</button>
+                <button class="btn action-preview-button is-action-hidden" id="btn-commit" style="padding: 10px 25px; font-size: 1.2em;" onclick="commitSeats()">座席を確定</button>
             </div>
         </div>
     </div>

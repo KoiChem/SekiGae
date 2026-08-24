@@ -1046,7 +1046,7 @@ function markPendingShuffleAsManuallyModified() {
 
 function updateMainViewToggleUi() {
     const btn = document.getElementById('btn-main-view-toggle');
-    if (btn) btn.textContent = isStudentView ? '視点: 生徒側' : '視点: 教員側';
+    if (btn) btn.textContent = isStudentView ? '生徒視点' : '教員視点';
 }
 
 function normalizeUiLayoutMode(value) {
@@ -1322,10 +1322,26 @@ function handleSeatTrackTouchEnd(e) {
 
 
 function setActionButtons(commitVisible, logVisible) {
-    document.getElementById('btn-commit').style.display = commitVisible ? 'block' : 'none';
-    const cancelBtn = document.getElementById('btn-cancel-preview');
-    if (cancelBtn) cancelBtn.style.display = commitVisible ? 'block' : 'none';
-    document.getElementById('btn-show-log').style.display = logVisible ? 'block' : 'none';
+    setPreviewActionButtonVisibility('btn-commit', commitVisible);
+    setPreviewActionButtonVisibility('btn-cancel-preview', commitVisible);
+    setPreviewActionButtonVisibility('btn-show-log', logVisible);
+}
+
+/** 縦画面のプレビュー操作は、非表示中もPC・タブレットでは専用の列を保つ。 */
+function setPreviewActionButtonVisibility(id, visible) {
+    const button = document.getElementById(id);
+    if (!button) return;
+    button.classList.toggle('is-action-hidden', !visible);
+    button.tabIndex = visible ? 0 : -1;
+    syncPreviewActionButtonsVisibility();
+}
+
+function syncPreviewActionButtonsVisibility() {
+    const group = document.querySelector('.preview-action-buttons');
+    if (!group) return;
+    const hasVisibleAction = Boolean(group.querySelector('.action-preview-button:not(.is-action-hidden)'));
+    group.classList.toggle('is-action-group-empty', !hasVisibleAction);
+    document.getElementById('main-action-controls')?.classList.toggle('has-preview-actions', hasVisibleAction);
 }
 
 function getCheckedRadioValue(name) {
@@ -2647,11 +2663,11 @@ function updatePrintViewToggleUi() {
     const btn = document.getElementById('btn-print-view-toggle');
     if (!btn) return;
     const isPrintStudentView = getPrintStudentView();
-    btn.textContent = isPrintStudentView ? '生徒側' : '教員側';
+    btn.textContent = isPrintStudentView ? '生徒視点' : '教員視点';
     btn.setAttribute('aria-pressed', isPrintStudentView ? 'true' : 'false');
     btn.setAttribute('aria-label', isPrintStudentView
-        ? '現在は生徒側からの視点です。教員側へ切り替えます'
-        : '現在は教員側からの視点です。生徒側へ切り替えます');
+        ? '現在は生徒視点です。教員視点へ切り替えます'
+        : '現在は教員視点です。生徒視点へ切り替えます');
 }
 
 function normalizePrintOrientation(value) {
@@ -6332,7 +6348,7 @@ function clearManualSwapUndoStack() {
 
 function updateManualSwapUndoButton() {
     const btn = document.getElementById('btn-undo-manual-swap');
-    if (btn) btn.style.display = previewAssignment && manualSwapUndoStack.length > 0 ? 'block' : 'none';
+    setPreviewActionButtonVisibility('btn-undo-manual-swap', previewAssignment && manualSwapUndoStack.length > 0);
 }
 
 function manualSwapCacheKey() {

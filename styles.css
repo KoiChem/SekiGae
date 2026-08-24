@@ -760,10 +760,41 @@ body.exception-mode-active .settings-bottom { pointer-events: none; filter: gray
 body.ui-layout-portrait .main-status-controls { width: 100%; gap: 8px; }
 body.ui-layout-portrait .main-class-select { flex: 0 1 160px; min-width: 120px; }
 body.ui-layout-portrait .main-class-summary { flex: 0 1 auto; min-width: 0; justify-content: flex-start; gap: 10px; padding: 5px 8px; }
-body.ui-layout-portrait .action-bar-bottom { gap: 8px; }
-body.ui-layout-portrait .seat-action-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1 1 auto; gap: 6px !important; }
-body.ui-layout-portrait .seat-action-button { width: 100%; min-width: 0; padding: 9px 6px !important; font-size: 0.95em !important; }
-body.ui-layout-portrait .action-bar-bottom > .flex-row:not(.seat-action-buttons) { flex-wrap: wrap; justify-content: flex-end; gap: 6px !important; }
+body.ui-layout-portrait #tab-main > .action-bar { order: 1; }
+body.ui-layout-portrait #tab-main > #alert-box { order: 2; }
+body.ui-layout-portrait #tab-main > .preview-points-legend { order: 3; }
+body.ui-layout-portrait #tab-main > .classroom-wrapper { order: 4; }
+body.ui-layout-portrait #tab-main > .settings-bottom { order: 5; }
+body.ui-layout-portrait .action-bar-bottom {
+    display: grid;
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.2fr) minmax(0, 0.72fr) minmax(0, 0.78fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(0, 1.12fr) minmax(0, 1.3fr);
+    grid-template-areas: "checkerboard shuffle sort clear log undo cancel commit";
+    align-items: stretch;
+    gap: 6px;
+}
+body.ui-layout-portrait .seat-action-buttons,
+body.ui-layout-portrait .preview-action-buttons { display: contents; }
+body.ui-layout-portrait .seat-action-buttons > :nth-child(1) { grid-area: checkerboard; }
+body.ui-layout-portrait .seat-action-buttons > :nth-child(2) { grid-area: shuffle; }
+body.ui-layout-portrait .seat-action-buttons > :nth-child(3) { grid-area: sort; }
+body.ui-layout-portrait .seat-action-buttons > :nth-child(4) { grid-area: clear; }
+body.ui-layout-portrait #btn-show-log { grid-area: log; }
+body.ui-layout-portrait #btn-undo-manual-swap { grid-area: undo; }
+body.ui-layout-portrait #btn-cancel-preview { grid-area: cancel; }
+body.ui-layout-portrait #btn-commit { grid-area: commit; }
+body.ui-layout-portrait .seat-action-button,
+body.ui-layout-portrait .action-preview-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 5px !important;
+    font-size: clamp(0.68em, 1.45vw, 0.9em) !important;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+body.ui-layout-portrait #btn-commit { padding-inline: 6px !important; }
+body.ui-layout-portrait .action-preview-button.is-action-hidden { visibility: hidden; pointer-events: none; }
+body.ui-layout-portrait .preview-action-buttons.is-action-group-empty { display: none; }
 .settings-action-slot:empty,
 .settings-status-slot:empty { display: none; }
 body.ui-layout-landscape .settings-action-slot .action-bar-bottom { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; }
@@ -1513,10 +1544,20 @@ body.print-orientation-portrait .print-seat-grid {
     body.ui-layout-portrait .main-class-select { flex: 0 0 120px; min-width: 0; font-size: 0.92em; }
     body.ui-layout-portrait .main-class-summary { padding: 4px 6px; gap: 6px; font-size: 0.8em; }
     body.ui-layout-portrait .main-class-summary-label { font-size: 0.78em; }
-    body.ui-layout-portrait .action-bar-bottom { flex-wrap: wrap; }
-    body.ui-layout-portrait .seat-action-buttons { flex-basis: 100%; }
+    body.ui-layout-portrait .action-bar-bottom {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-areas: "checkerboard shuffle sort clear";
+    }
+    body.ui-layout-portrait .action-bar-bottom.has-preview-actions {
+        grid-template-areas:
+            "checkerboard shuffle sort clear"
+            "log log undo undo"
+            "cancel cancel commit commit";
+        row-gap: 6px;
+    }
     body.ui-layout-portrait .seat-action-button { padding-inline: 3px !important; font-size: 0.82em !important; }
-    body.ui-layout-portrait .action-bar-bottom > .flex-row:not(.seat-action-buttons) { width: 100%; justify-content: flex-end; }
+    body.ui-layout-portrait .action-preview-button { padding-inline: 6px !important; font-size: 0.85em !important; }
+    body.ui-layout-portrait .action-preview-button.is-action-hidden { display: none; }
     .backup-actions { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
