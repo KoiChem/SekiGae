@@ -937,6 +937,7 @@ let seatTrackTouchTimer = null;
 let seatTrackLongPressTriggered = false;
 let suppressSeatClickUntil = 0;
 let activeColorPaletteTarget = 0;
+let mainColorPaletteRestoreTarget = null;
 let printPanelOpen = false;
 let printRenderGeneration = 0;
 let printScreenScale = 1;
@@ -1565,16 +1566,17 @@ function writeGenderBorderDataToMainUi(value) {
     const girl = document.getElementById('gb-girl-color');
     const style = document.getElementById('gb-style');
     const btn = document.getElementById('btn-gender-border');
-    const panel = document.getElementById('gender-border-settings');
     if (boy) boy.value = data.boy;
     if (girl) girl.value = data.girl;
     if (style) style.value = data.style;
+    applyColorControlSurface(boy, getColorInput(Number(data.boy))?.value || DEFAULT_SEAT_COLORS[5]);
+    applyColorControlSurface(girl, getColorInput(Number(data.girl))?.value || DEFAULT_SEAT_COLORS[4]);
     if (btn) {
         btn.classList.toggle('btn-success', data.active);
         btn.classList.toggle('btn-outline', !data.active);
         btn.textContent = data.active ? 'ON' : 'OFF';
+        btn.setAttribute('aria-pressed', String(data.active));
     }
-    if (panel) panel.style.display = data.active ? 'block' : 'none';
 }
 
 function normalizeSeatAppearanceSettings(value) {
@@ -3020,17 +3022,24 @@ function refreshColorPaletteSwatches() {
         const swatch = document.getElementById(`color-swatch-${i}`);
         const input = getColorInput(i);
         if (!swatch || !input) continue;
-        swatch.style.backgroundColor = input.value;
+        applyColorControlSurface(swatch, input.value);
         swatch.title = `${i}: ${input.value.toUpperCase()}`;
+        swatch.setAttribute('aria-label', `色${i}のパレットを開く（現在 ${input.value.toUpperCase()}）`);
     }
 }
 
-function closeColorPalette() {
+function closeColorPalette(returnFocus = false) {
     const panel = getColorPalettePanel();
     if (!panel) return;
     panel.style.display = 'none';
     panel.innerHTML = '';
+    panel.style.width = '';
+    panel.style.left = '';
+    panel.style.top = '';
     activeColorPaletteTarget = 0;
+    mainColorPaletteRestoreTarget?.setAttribute('aria-expanded', 'false');
+    if (returnFocus) mainColorPaletteRestoreTarget?.focus();
+    mainColorPaletteRestoreTarget = null;
 }
 
 function applyColorToIndex(index, colorHex) {
@@ -3045,18 +3054,42 @@ function openColorPalette(index) {
     const panel = getColorPalettePanel();
     const anchor = document.getElementById(`color-swatch-${index}`);
     if (!panel || !anchor) return;
-    if (activeColorPaletteTarget === index && panel.style.display === 'grid') {
+    if (activeColorPaletteTarget === index && panel.style.display === 'block') {
         closeColorPalette();
         return;
     }
     activeColorPaletteTarget = index;
-    panel.innerHTML = COLOR_PALETTE_PRESET.map(color =>
-        `<button type="button" class="color-palette-chip" data-color="${color}" style="background:${color};" title="${color.toUpperCase()}"></button>`
-    ).join('');
-    panel.style.display = 'grid';
+    mainColorPaletteRestoreTarget = anchor;
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', `色${index}を選択`);
+    panel.innerHTML = `<div class="main-color-palette-grid">${COLOR_PALETTE_PRESET.map(color => `<button type="button" class="color-palette-chip" data-color="${color}" style="background:${color}" aria-label="${color.toUpperCase()}"></button>`).join('')}</div><div class="main-color-palette-footer"><output>${getColorInput(index)?.value.toUpperCase() || ''}</output><button type="button" class="btn btn-outline color-palette-other">その他</button></div>`;
+    panel.style.display = 'block';
+    positionMainColorPalette(panel, anchor);
+    anchor.setAttribute('aria-expanded', 'true');
     panel.querySelectorAll('.color-palette-chip').forEach(btn => {
         btn.addEventListener('click', () => applyColorToIndex(index, btn.dataset.color));
     });
+    panel.querySelector('.color-palette-other')?.addEventListener('click', () => openNativeColorPicker(index));
+    panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeColorPalette(true); } }, { once: true });
+    const selected = [...panel.querySelectorAll('.color-palette-chip')].find(button => button.dataset.color.toUpperCase() === getColorInput(index)?.value.toUpperCase());
+    (selected || panel.querySelector('.color-palette-chip'))?.focus();
+}
+
+function positionMainColorPalette(panel, anchor) {
+    if (!panel || !anchor) return;
+    const margin = 8;
+    const gap = 8;
+    const width = Math.min(360, Math.max(280, window.innerWidth - margin * 2));
+    panel.style.width = `${width}px`;
+    panel.style.left = `${margin}px`;
+    panel.style.top = `${margin}px`;
+    const anchorRect = anchor.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const left = Math.min(Math.max(margin, anchorRect.left), window.innerWidth - panelRect.width - margin);
+    let top = anchorRect.bottom + gap;
+    if (top + panelRect.height > window.innerHeight - margin) top = Math.max(margin, anchorRect.top - panelRect.height - gap);
+    panel.style.left = `${Math.round(left)}px`;
+    panel.style.top = `${Math.round(top)}px`;
 }
 
 function openNativeColorPicker(index) {
@@ -3074,9 +3107,10 @@ function initColorPaletteUI() {
         if (!panel || panel.style.display === 'none') return;
         const target = e.target;
         if (!(target instanceof Element)) return;
-        if (target.closest('.color-swatch-btn') || target.closest('.color-palette-panel')) return;
+        if (target.closest('.main-color-token') || target.closest('.main-color-palette')) return;
         closeColorPalette();
     });
+    window.addEventListener('resize', () => closeColorPalette());
 }
 
 function updateColors() {
@@ -3131,7 +3165,7 @@ function initPrintSettingsPanel() {
     syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
 }
 
-function getPrintControlForegroundColor(color) {
+function getColorControlForegroundColor(color) {
     const hex = normalizeColorHex(color, '#FFFFFF');
     const toLinear = channel => {
         const normalized = parseInt(channel, 16) / 255;
@@ -3141,10 +3175,10 @@ function getPrintControlForegroundColor(color) {
     return luminance > 0.42 ? '#1F2937' : '#FFFFFF';
 }
 
-function applyPrintControlColor(control, color) {
+function applyColorControlSurface(control, color) {
     if (!control) return;
     control.style.setProperty('--ps-control-color', color);
-    control.style.setProperty('--ps-control-foreground', getPrintControlForegroundColor(color));
+    control.style.setProperty('--ps-control-foreground', getColorControlForegroundColor(color));
 }
 
 function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) {
@@ -3155,7 +3189,7 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
         if (printInput) printInput.checked = field.print;
         if (colorInput) {
             colorInput.value = String(field.colorNum);
-            applyPrintControlColor(colorInput, settings.colors[`c${field.colorNum}`]);
+            applyColorControlSurface(colorInput, settings.colors[`c${field.colorNum}`]);
         }
         const fontInput = document.getElementById(`ps-font-${field.key}`);
         if (fontInput) fontInput.value = field.fontKey;
@@ -3164,7 +3198,7 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
         const color = settings.colors[`c${i}`];
         const token = document.getElementById(`ps-color-swatch-${i}`);
         if (token) {
-            applyPrintControlColor(token, color);
+            applyColorControlSurface(token, color);
             token.title = color;
             token.setAttribute('aria-label', `色${i}のパレットを開く（現在 ${color.toUpperCase()}）`);
         }
@@ -3177,11 +3211,11 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
     if (active) active.checked = gb.active;
     if (boy) {
         boy.value = gb.boy;
-        applyPrintControlColor(boy, settings.colors[`c${gb.boy}`]);
+        applyColorControlSurface(boy, settings.colors[`c${gb.boy}`]);
     }
     if (girl) {
         girl.value = gb.girl;
-        applyPrintControlColor(girl, settings.colors[`c${gb.girl}`]);
+        applyColorControlSurface(girl, settings.colors[`c${gb.girl}`]);
     }
     if (style) style.value = gb.style;
 }

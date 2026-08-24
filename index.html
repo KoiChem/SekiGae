@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260824-print-settings-columns-v2">
+<link rel="stylesheet" href="styles.css?v=20260824-main-color-gender-v1">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -390,39 +390,18 @@
             </table>
             <input type="hidden" id="layout-rules" value="">
             
-            <div id="color-palette-group" class="color-palette-group">
-                <div class="color-palette-row">
-                    <span class="color-palette-label">1</span>
-                    <button type="button" id="color-swatch-1" class="color-swatch-btn" onclick="openColorPalette(1)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(1)">その他</button>
-                </div>
-                <div class="color-palette-row">
-                    <span class="color-palette-label">2</span>
-                    <button type="button" id="color-swatch-2" class="color-swatch-btn" onclick="openColorPalette(2)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(2)">その他</button>
-                </div>
-                <div class="color-palette-row">
-                    <span class="color-palette-label">3</span>
-                    <button type="button" id="color-swatch-3" class="color-swatch-btn" onclick="openColorPalette(3)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(3)">その他</button>
-                </div>
-                <div class="color-palette-row">
-                    <span class="color-palette-label">4</span>
-                    <button type="button" id="color-swatch-4" class="color-swatch-btn" onclick="openColorPalette(4)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(4)">その他</button>
-                </div>
-                <div class="color-palette-row">
-                    <span class="color-palette-label">5</span>
-                    <button type="button" id="color-swatch-5" class="color-swatch-btn" onclick="openColorPalette(5)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(5)">その他</button>
-                </div>
-                <div class="color-palette-row">
-                    <span class="color-palette-label">6</span>
-                    <button type="button" id="color-swatch-6" class="color-swatch-btn" onclick="openColorPalette(6)"></button>
-                    <button type="button" class="btn btn-outline color-palette-other" onclick="openNativeColorPicker(6)">その他</button>
+            <div id="color-palette-group" class="main-color-controls">
+                <h3>共通色</h3>
+                <div class="main-color-token-list" role="group" aria-label="色1から色6">
+                    <button type="button" id="color-swatch-1" class="main-color-token" onclick="openColorPalette(1)" aria-label="色1のパレットを開く" aria-expanded="false">1</button>
+                    <button type="button" id="color-swatch-2" class="main-color-token" onclick="openColorPalette(2)" aria-label="色2のパレットを開く" aria-expanded="false">2</button>
+                    <button type="button" id="color-swatch-3" class="main-color-token" onclick="openColorPalette(3)" aria-label="色3のパレットを開く" aria-expanded="false">3</button>
+                    <button type="button" id="color-swatch-4" class="main-color-token" onclick="openColorPalette(4)" aria-label="色4のパレットを開く" aria-expanded="false">4</button>
+                    <button type="button" id="color-swatch-5" class="main-color-token" onclick="openColorPalette(5)" aria-label="色5のパレットを開く" aria-expanded="false">5</button>
+                    <button type="button" id="color-swatch-6" class="main-color-token" onclick="openColorPalette(6)" aria-label="色6のパレットを開く" aria-expanded="false">6</button>
                 </div>
             </div>
-            <div id="color-palette-panel" class="color-palette-panel" style="display:none;"></div>
+            <div id="color-palette-panel" class="main-color-palette" style="display:none;"></div>
             <div class="color-picker-group color-picker-group-hidden" aria-hidden="true">
                 <label for="color-1" class="color-item">1:<input type="color" id="color-1" value="#1f2937" onchange="updateColors()"></label>
                 <label for="color-2" class="color-item">2:<input type="color" id="color-2" value="#4b5563" onchange="updateColors()"></label>
@@ -432,27 +411,13 @@
                 <label for="color-6" class="color-item">6:<input type="color" id="color-6" value="#f26d85" onchange="updateColors()"></label>
             </div>
             <hr style="border:none; border-top:1px dashed #ccc; margin: 15px 0 10px 0;">
-            <div class="flex-row" style="justify-content: space-between; margin-bottom: 5px;">
-                <h3 style="margin:0; font-size: 0.95em;">男女別の枠線（任意）</h3>
-                <button id="btn-gender-border" class="btn btn-outline" style="padding: 4px 15px; font-size: 0.85em; font-weight:bold;" onclick="toggleGenderBorder()">OFF</button>
-            </div>
-            <div id="gender-border-settings" style="display: none; background: #f8f9fa; padding: 10px; border-radius: 5px; font-size: 0.85em;">
-                <div class="flex-row" style="margin-bottom: 8px;">
-                    <label style="font-weight:bold; color:#2c3e50;">男の色(1-6):
-                        <input type="number" id="gb-boy-color" min="1" max="6" value="6" style="width: 45px; margin-right:15px;" onchange="saveAndRender()">
-                    </label>
-                    <label style="font-weight:bold; color:#2c3e50;">女の色(1-6):
-                        <input type="number" id="gb-girl-color" min="1" max="6" value="5" style="width: 45px;" onchange="saveAndRender()">
-                    </label>
-                </div>
-                <div class="flex-row">
-                    <label style="font-weight:bold; color:#2c3e50;">表示スタイル: 
-                        <select id="gb-style" onchange="saveAndRender()" style="font-weight:bold;">
-                            <option value="solid">通常線 (実線 2px)</option>
-                            <option value="thick">太線 (実線 4px)</option>
-                            <option value="double">二重線 (double 4px)</option>
-                        </select>
-                    </label>
+            <div id="gender-border-settings" class="main-gender-settings">
+                <div class="main-gender-title">男女別枠線</div>
+                <div class="main-gender-controls">
+                    <button id="btn-gender-border" class="btn btn-outline" type="button" onclick="toggleGenderBorder()" aria-pressed="false">OFF</button>
+                    <label>男：<select id="gb-boy-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="男子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option></select></label>
+                    <label>女：<select id="gb-girl-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="女子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option><option value="6">6</option></select></label>
+                    <label class="main-gender-style">線：<select id="gb-style" onchange="saveAndRender()" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label>
                 </div>
             </div>
 
@@ -708,6 +673,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260824-print-settings-columns"></script>
+<script src="app.js?v=20260824-main-color-gender-v1"></script>
 </body>
 </html>
