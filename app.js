@@ -933,6 +933,12 @@ let printIsStudentView = null;
 let protectedExceptionSeats = new Set();
 /** バックアップ読込で選択モーダルを出すまで保持する解析済み JSON オブジェクト */
 let pendingImportBackupData = null;
+/** 全データ削除モーダルとバックアップ選択モーダルの往復状態 */
+let exportBackupReturnTarget = null;
+let deleteAllDataEscListener = null;
+let deleteAllDataRestoreTarget = null;
+let sampleDeleteInfoEscListener = null;
+let sampleDeleteInfoRestoreTarget = null;
 let seatTrackTouchTimer = null;
 let seatTrackLongPressTriggered = false;
 let suppressSeatClickUntil = 0;
@@ -1455,6 +1461,7 @@ window.onload = async () => {
         }
     }
     initializeApp();
+    if (!SAMPLE_MODE) showDeleteAllDataCompleteNotice();
     showSampleWelcomeModal();
 };
 
@@ -5163,8 +5170,8 @@ function renderCheckerboardPatternModal({ ok0, ok1, conflicts0, conflicts1 }) {
     const fmt = (arr) => {
         if (!arr.length) return '';
         const lines = arr.slice(0, 4).map(s =>
-            s._parseErrors ? `${s.id} ${s.name}: 備考欄記法エラー`
-                           : `${s.id} ${s.name}（${s.gender || '?'}）: 候補席0`
+            s._parseErrors ? `${escapeHtml(s.id)} ${escapeHtml(s.name)}: 備考欄記法エラー`
+                           : `${escapeHtml(s.id)} ${escapeHtml(s.name)}（${escapeHtml(s.gender || '?')}）: 候補席0`
         ).join('<br>');
         return lines + (arr.length > 4 ? `<br>…他 ${arr.length - 4} 名` : '');
     };
@@ -5214,7 +5221,7 @@ function openCheckerboardPatternModalImpl() {
     const rulesText = document.getElementById('overall-rules').value.trim();
     const parsedRuleSet = parseOverallRulesText(rulesText);
     if (parsedRuleSet.errors.length > 0) {
-        return showAlert(`全体ルールの記法エラー：<br>${parsedRuleSet.errors.join('<br>')}`);
+        return showAlert(['全体ルールの記法エラー：', ...parsedRuleSet.errors].join('\n'));
     }
 
     const activeCount = TOTAL_SEATS - inactiveSeats.size;
@@ -5324,7 +5331,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
     const parsedOverallRules = parsedRuleSet.placementRules;
     if (parsedRuleSet.errors.length > 0) {
         isCalculating = false;
-        return showAlert(`全体ルールの記法エラー：<br>${parsedRuleSet.errors.join('<br>')}`);
+        return showAlert(['全体ルールの記法エラー：', ...parsedRuleSet.errors].join('\n'));
     }
 
     const activeCount = TOTAL_SEATS - inactiveSeats.size;
@@ -5348,11 +5355,11 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
         isCalculating = false;
         const parseErrorStudents = conflicts.filter(s => s._parseErrors);
         if (parseErrorStudents.length > 0) {
-            const parseDetail = parseErrorStudents.slice(0, 3).map(s => `${s.id} ${s.name}: ${s._parseErrors.join(' / ')}`).join('<br>');
-            return showAlert(`備考欄の記法エラー：<br>${parseDetail}`);
+            const parseDetail = parseErrorStudents.slice(0, 3).map(s => `${s.id} ${s.name}: ${s._parseErrors.join(' / ')}`).join('\n');
+            return showAlert(`備考欄の記法エラー：\n${parseDetail}`);
         }
         const detail = conflicts.slice(0, 5).map(s => `${s.id} ${s.name}`).join('、');
-        showAlert(`配置できません：必須ルール（備考欄／全体ルール／市松）により候補席がない生徒がいます。<br>${detail}${conflicts.length > 5 ? ' ほか' : ''}`);
+        showAlert(`配置できません：必須ルール（備考欄／全体ルール／市松）により候補席がない生徒がいます。\n${detail}${conflicts.length > 5 ? ' ほか' : ''}`);
         return;
     }
     if (isCheckerboard) checkGenderBalance(tempStudents); else await executeSmartShuffle(tempStudents, false, shuffleRun);
@@ -5418,9 +5425,12 @@ function updateExceptionMessage() {
     const remain = requiredExceptions - currentExceptions.size;
     if (remain > 0) {
         const lockNote = protectedExceptionSeats.size > 0
-            ? `<div style="margin-top:8px; font-size:0.85em; color:#856404;">🔒 マークの席は座席固定指定のため反転できません</div>`
+            ? '\n🔒 マークの席は座席固定指定のため反転できません'
             : '';
-        showAlert(`【市松モード例外選択】 盤面をクリックして、例外席をあと ${remain}つ 選んでください。${lockNote}<br><button class="btn btn-outline" style="margin-top:10px; background:#fff;" onclick="cancelExceptionMode()">中止して戻る</button>`, 'info');
+        showAlert(`【市松モード例外選択】 盤面をクリックして、例外席をあと ${remain}つ 選んでください。${lockNote}`, 'info', {
+            label: '中止して戻る',
+            onClick: cancelExceptionMode
+        });
     } else {
         exceptionMode = false; document.body.classList.remove('exception-mode-active'); hideAlert();
         initGrid();
@@ -5474,11 +5484,11 @@ function showLogModal() {
         const penaltyCount = sortedArr.length;
         const status = penaltyCount === 0 ? `<span class="log-success">0件</span>` : `<span class="log-highlight">${penaltyCount}件（合計 ${sc}点）</span>`;
         const icon = penaltyCount === 0 ? 'OK' : (sc >= 500 ? '注意' : '要確認');
-        let res = `<div class="penalty-item"><span>${icon} <b>${title}</b> <span style="font-size:0.82em;color:#666;font-weight:normal;">${ruleHint}</span>：${status}</span>`;
+        let res = `<div class="penalty-item"><span>${icon} <b>${escapeHtml(title)}</b> <span style="font-size:0.82em;color:#666;font-weight:normal;">${escapeHtml(ruleHint)}</span>：${status}</span>`;
         if (penaltyCount > 0) {
             res += `<button class="toggle-btn" onclick="toggleLogDetail('${idBase}', this)">[ ▼ 詳細 ]</button></div>
             <div id="${idBase}" class="penalty-details"><ul>`;
-            sortedArr.forEach(item => { res += `<li>${item}</li>`; });
+            sortedArr.forEach(item => { res += `<li>${escapeHtml(item)}</li>`; });
             res += `</ul></div>`;
         } else res += `</div>`;
         return res;
@@ -5507,14 +5517,14 @@ function showLogModal() {
             : items.length;
         const status = scoredOnlyCount === 0 ? `<span class="log-success">0件</span>` : `<span class="log-highlight">${scoredOnlyCount}件（合計 ${sc}点）</span>`;
         const icon = scoredOnlyCount === 0 ? 'OK' : (sc >= 500 ? '注意' : '要確認');
-        let res = `<div class="penalty-item"><span>${icon} <b>${title}</b> <span style="font-size:0.82em;color:#666;font-weight:normal;">${ruleHint}</span>：${status}</span>`;
+        let res = `<div class="penalty-item"><span>${icon} <b>${escapeHtml(title)}</b> <span style="font-size:0.82em;color:#666;font-weight:normal;">${escapeHtml(ruleHint)}</span>：${status}</span>`;
         if (items.length > 0) {
             res += `<button class="toggle-btn" onclick="toggleLogDetail('${idBase}', this)">[ ▼ 詳細 ]</button></div>
             <div id="${idBase}" class="penalty-details"><ul>`;
             items.forEach(item => {
                 const text = item.displayText != null ? item.displayText : item;
                 const cls = item.scored === false ? ' class="log-line-muted"' : '';
-                res += `<li${cls}>${text}</li>`;
+                res += `<li${cls}>${escapeHtml(text)}</li>`;
             });
             res += `</ul></div>`;
         } else res += `</div>`;
@@ -6980,6 +6990,133 @@ function clearAllHistories() {
         showAlert("全履歴をリセットしました。", "success");
     }
 }
+
+/** 通常版では削除確認、サンプル版では機能説明を表示する。 */
+function openDeleteAllDataFlow() {
+    if (SAMPLE_MODE) {
+        openSampleDeleteInfoModal();
+        return;
+    }
+    openDeleteAllDataModal();
+}
+
+function openDeleteAllDataModal(statusMessage = '') {
+    const modal = document.getElementById('delete-all-data-modal');
+    const input = document.getElementById('delete-all-data-confirm-input');
+    const status = document.getElementById('delete-all-data-status');
+    if (!modal || !input) return;
+    deleteAllDataRestoreTarget = document.activeElement;
+    input.value = '';
+    if (status) {
+        status.textContent = statusMessage;
+        status.hidden = !statusMessage;
+    }
+    updateDeleteAllDataConfirmButton();
+    modal.style.display = 'flex';
+    input.focus();
+    if (!deleteAllDataEscListener) {
+        deleteAllDataEscListener = event => {
+            if (event.key === 'Escape' || event.key === 'Esc') closeDeleteAllDataModal();
+        };
+        document.addEventListener('keydown', deleteAllDataEscListener);
+    }
+}
+
+function hideDeleteAllDataModal(restoreFocus = true) {
+    const modal = document.getElementById('delete-all-data-modal');
+    if (modal) modal.style.display = 'none';
+    if (deleteAllDataEscListener) {
+        document.removeEventListener('keydown', deleteAllDataEscListener);
+        deleteAllDataEscListener = null;
+    }
+    if (restoreFocus && deleteAllDataRestoreTarget && typeof deleteAllDataRestoreTarget.focus === 'function') {
+        deleteAllDataRestoreTarget.focus();
+    }
+}
+
+function closeDeleteAllDataModal() {
+    hideDeleteAllDataModal(true);
+}
+
+function updateDeleteAllDataConfirmButton() {
+    const input = document.getElementById('delete-all-data-confirm-input');
+    const button = document.getElementById('delete-all-data-confirm-button');
+    if (!input || !button) return;
+    button.disabled = input.value.trim() !== '全削除';
+}
+
+function openExportBackupFromDeleteAllModal() {
+    if (SAMPLE_MODE) return;
+    hideDeleteAllDataModal(false);
+    exportBackupReturnTarget = 'delete-all-data';
+    openExportBackupModal();
+}
+
+/** 同一オリジンの他アプリを消さず、SekiGae所有キーだけを対象にする。 */
+function isSekiGaeOwnedStorageKey(key) {
+    const normalized = String(key || '');
+    return normalized === UI_LAYOUT_STORAGE_KEY || /^Sekigae(?:Kun|App)_(?:sample_)?v\d+_/.test(normalized);
+}
+
+function deleteAllSekiGaeStoredData() {
+    const keys = [];
+    for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key && isSekiGaeOwnedStorageKey(key)) keys.push(key);
+    }
+    keys.forEach(key => localStorage.removeItem(key));
+    return keys.length;
+}
+
+function confirmDeleteAllData() {
+    if (SAMPLE_MODE) {
+        openSampleDeleteInfoModal();
+        return;
+    }
+    const input = document.getElementById('delete-all-data-confirm-input');
+    if (!input || input.value.trim() !== '全削除') return;
+    deleteAllSekiGaeStoredData();
+    hideDeleteAllDataModal(false);
+    const url = new URL(window.location.href);
+    url.searchParams.set('cleared', '1');
+    location.replace(url.pathname + url.search + url.hash);
+}
+
+function showDeleteAllDataCompleteNotice() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('cleared') !== '1') return;
+    url.searchParams.delete('cleared');
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+    showAlert('このブラウザのSekiGaeデータをすべて削除しました。', 'success');
+}
+
+function openSampleDeleteInfoModal() {
+    const modal = document.getElementById('sample-delete-info-modal');
+    if (!modal) return;
+    sampleDeleteInfoRestoreTarget = document.activeElement;
+    modal.style.display = 'flex';
+    const closeButton = modal.querySelector('button');
+    if (closeButton) closeButton.focus();
+    if (!sampleDeleteInfoEscListener) {
+        sampleDeleteInfoEscListener = event => {
+            if (event.key === 'Escape' || event.key === 'Esc') closeSampleDeleteInfoModal();
+        };
+        document.addEventListener('keydown', sampleDeleteInfoEscListener);
+    }
+}
+
+function closeSampleDeleteInfoModal() {
+    const modal = document.getElementById('sample-delete-info-modal');
+    if (modal) modal.style.display = 'none';
+    if (sampleDeleteInfoEscListener) {
+        document.removeEventListener('keydown', sampleDeleteInfoEscListener);
+        sampleDeleteInfoEscListener = null;
+    }
+    if (sampleDeleteInfoRestoreTarget && typeof sampleDeleteInfoRestoreTarget.focus === 'function') {
+        sampleDeleteInfoRestoreTarget.focus();
+    }
+}
+
 /** 旧バージョンの localStorage キーを現在の PREFIX に正規化 */
 function normalizeBackupStorageKey(k) {
     return String(k).replace(/^Sekigae(Kun|App)_v\d+_/, PREFIX);
@@ -7040,12 +7177,22 @@ function openExportBackupModal() {
         label.appendChild(document.createTextNode(` ${c.name || c.id}`));
         container.appendChild(label);
     });
+    const deleteContextNote = document.getElementById('export-delete-context-note');
+    if (deleteContextNote) deleteContextNote.hidden = exportBackupReturnTarget !== 'delete-all-data';
     document.getElementById('export-backup-modal').style.display = 'flex';
 }
 
-function closeExportBackupModal() {
+function closeExportBackupModal(options = {}) {
     const el = document.getElementById('export-backup-modal');
     if (el) el.style.display = 'none';
+    const returnTarget = exportBackupReturnTarget;
+    exportBackupReturnTarget = null;
+    if (returnTarget === 'delete-all-data') {
+        const message = options.downloadStarted
+            ? `${options.classCount}クラスのバックアップのダウンロードを開始しました。ファイルが保存されたことを確認してください。`
+            : 'バックアップは作成していません。必要に応じて作成してから削除してください。';
+        openDeleteAllDataModal(message);
+    }
 }
 
 function toggleExportClasses(checked) {
@@ -7075,7 +7222,7 @@ function confirmExportBackup() {
     lastBackupAt = new Date().toLocaleString();
     saveCurrentClassData();
     refreshBackupStatus();
-    closeExportBackupModal();
+    closeExportBackupModal({ downloadStarted: true, classCount: selectedIds.length });
 }
 
 function openImportBackupModal() {
@@ -7209,5 +7356,24 @@ function onImportBackupFileChange(e) {
     reader.readAsText(selectedFile);
 }
 
-function showAlert(msg, type='error') { const b = document.getElementById('alert-box'); b.innerHTML = msg.replace(/\n/g, '<br>'); b.style.display = 'block'; b.className = `alert-${type}`; }
+/** 通知は利用者入力をHTMLとして解釈しない。操作が必要な場合もDOM要素で追加する。 */
+function showAlert(msg, type='error', action = null) {
+    const b = document.getElementById('alert-box');
+    if (!b) return;
+    b.replaceChildren();
+    const message = document.createElement('span');
+    message.textContent = String(msg ?? '');
+    b.appendChild(message);
+    if (action && typeof action.onClick === 'function') {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-outline alert-action-button';
+        button.textContent = action.label || '実行';
+        button.addEventListener('click', action.onClick);
+        b.appendChild(document.createElement('br'));
+        b.appendChild(button);
+    }
+    b.style.display = 'block';
+    b.className = `alert-${type}`;
+}
 function hideAlert() { document.getElementById('alert-box').style.display = 'none'; }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260824-main-color-gender-v1">
+<link rel="stylesheet" href="styles.css?v=20260824-data-privacy-v1">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -96,7 +96,9 @@
 <div id="export-backup-modal" class="modal-overlay">
     <div class="modal-content" style="max-width: 520px;">
         <h2 style="border:none; font-size:1.35em; color: #2c3e50; margin-bottom: 8px;">バックアップに含めるクラス</h2>
-        <p style="font-size:0.9em; color:#555; margin: 0 0 12px 0; text-align:left;">チェックしたクラスのみ書き出します（クラス一覧は選択されたクラスのみを含む system と各 data を出力します）。</p>
+        <p style="font-size:0.9em; color:#555; margin: 0 0 8px 0; text-align:left;">チェックしたクラスのみを書き出します。バックアップには名簿、座席配置、履歴、設定が含まれます。</p>
+        <p class="backup-privacy-note">個人情報を含むファイルです。適切な場所に保管し、不要になったら削除してください。</p>
+        <p id="export-delete-context-note" class="backup-delete-context-note" hidden>全データ削除の前に作成するバックアップです。削除後に必要なクラスがすべて選ばれているか確認してください。</p>
         <div id="export-class-checkboxes" class="backup-class-checkboxes"></div>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:10px;">
             <button type="button" class="btn btn-outline" style="padding:6px 14px;" onclick="toggleExportClasses(true)">全選択</button>
@@ -105,6 +107,37 @@
         <div style="display:flex; gap:12px; justify-content:center; margin-top:22px;">
             <button type="button" class="btn btn-outline" style="padding:10px 22px;" onclick="closeExportBackupModal()">キャンセル</button>
             <button type="button" class="btn" style="padding:10px 22px;" onclick="confirmExportBackup()">書き出す</button>
+        </div>
+    </div>
+</div>
+
+<div id="delete-all-data-modal" class="modal-overlay delete-all-data-modal" style="display:none;" aria-modal="true" role="alertdialog" aria-labelledby="delete-all-data-title">
+    <div class="modal-content delete-all-data-modal-content" style="max-width: 560px;">
+        <h2 id="delete-all-data-title">このブラウザのSekiGaeデータをすべて削除しますか？</h2>
+        <p>全クラスのクラス名、名簿、座席配置、履歴、再現用seed、ルール、表示・印刷設定を削除します。元に戻せません。</p>
+        <p>ダウンロード済みのバックアップ、PDF、印刷物、別の端末・ブラウザのデータは削除されません。</p>
+        <p id="delete-all-data-status" class="delete-all-data-status" aria-live="polite" hidden></p>
+        <div class="delete-all-data-backup-row">
+            <span>必要な場合は、先にバックアップを作成してください。</span>
+            <button type="button" class="btn btn-outline" onclick="openExportBackupFromDeleteAllModal()">バックアップ保存</button>
+        </div>
+        <label class="delete-all-data-confirm-label" for="delete-all-data-confirm-input">確認のため「全削除」と入力してください。</label>
+        <input id="delete-all-data-confirm-input" class="delete-all-data-confirm-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text" oninput="updateDeleteAllDataConfirmButton()">
+        <div class="delete-all-data-actions">
+            <button type="button" class="btn btn-outline" onclick="closeDeleteAllDataModal()">キャンセル</button>
+            <button type="button" id="delete-all-data-confirm-button" class="btn btn-danger" disabled onclick="confirmDeleteAllData()">全データを削除</button>
+        </div>
+    </div>
+</div>
+
+<div id="sample-delete-info-modal" class="modal-overlay sample-delete-info-modal" style="display:none;" aria-modal="true" role="dialog" aria-labelledby="sample-delete-info-title">
+    <div class="modal-content sample-delete-info-modal-content" style="max-width: 540px;">
+        <h2 id="sample-delete-info-title">全データ削除機能について</h2>
+        <p>通常版では、全クラスの名簿、座席配置、履歴、再現用seed、ルール、表示・印刷設定を削除できます。削除前にはバックアップを作成でき、確認のため「全削除」の入力が必要です。</p>
+        <p>このサンプル版では実際の削除は行いません。再読み込みすると、サンプルの変更は初期状態に戻ります。通常版の保存データには影響しません。</p>
+        <div class="sample-delete-info-actions">
+            <button type="button" class="btn btn-outline" onclick="closeSampleDeleteInfoModal()">閉じる</button>
+            <a class="btn" href="./index.html" target="_blank" rel="noopener">通常版を開く</a>
         </div>
     </div>
 </div>
@@ -456,7 +489,7 @@
                 <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して、確認後に履歴へ保存します">Excelの座席表を取り込む</button>
             </div>
             </div>
-            <p class="local-data-note">データはこのパソコンのブラウザ内にのみ保存されます。定期的にバックアップ保存してください。</p>
+            <p class="local-data-note">通常版の名簿・履歴・設定は、この端末のこのブラウザ内に保存されます。入力した名簿を外部へ送信せず、別の端末・ブラウザにも自動共有されません。定期的にバックアップを保存してください。</p>
             <div class="backup-actions">
                 <button class="btn btn-outline" style="font-size:0.85em;" onclick="openExportBackupModal()">バックアップ保存</button>
                 <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
@@ -464,7 +497,10 @@
             </div>
             <p id="backup-status" class="backup-status">最終バックアップ: —</p>
             <hr class="history-danger-divider">
-            <button class="btn btn-danger history-reset-button" onclick="clearAllHistories()">クラス履歴リセット</button>
+            <div class="history-danger-actions">
+                <button class="btn btn-danger history-reset-button" onclick="clearAllHistories()">クラス履歴リセット</button>
+                <button class="btn btn-danger history-reset-button history-delete-all-button" onclick="openDeleteAllDataFlow()">全データ削除</button>
+            </div>
         </div>
     </div>
 </div>
@@ -673,6 +709,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260824-main-color-gender-v1"></script>
+<script src="app.js?v=20260824-data-privacy-v1"></script>
 </body>
 </html>

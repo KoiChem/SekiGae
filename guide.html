@@ -344,7 +344,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
                 <a class="guide-btn guide-btn-primary" href="./sample.html">サンプル版で試す</a>
                 <a class="guide-btn guide-btn-light" href="./index.html">通常版を開く</a>
             </div>
-            <p class="hero-privacy"><strong>データについて：</strong>名簿や履歴はこの端末のブラウザ内に保存されます。大切なデータは定期的にバックアップしてください。</p>
+            <p class="hero-privacy"><strong>データについて：</strong>通常版の名簿・履歴・設定は、この端末のこのブラウザ内に保存され、入力内容を外部へ送信しません。大切なデータは定期的にバックアップしてください。</p>
         </div>
     </section>
 
@@ -396,7 +396,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
             </li>
         </ol>
 
-        <div class="quick-note"><strong>忘れずに：</strong>データはブラウザ内に保存されるため、授業や学期の区切りで「バックアップ保存」を行ってください。サンプル版は再読み込みすると初期状態に戻ります。</div>
+        <div class="quick-note"><strong>忘れずに：</strong>データはブラウザ内に保存されるため、授業や学期の区切りで「バックアップ保存」を行ってください。バックアップには個人情報が含まれるため、適切に保管します。サンプル版は再読み込みすると初期状態に戻ります。</div>
 
         <h3 class="subsection-title">配置方法はこの3つ</h3>
         <div class="method-grid">
@@ -536,7 +536,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
             </article>
             <article class="reference-card">
                 <h3>保存・バックアップ</h3>
-                <ul><li>データはこの端末のブラウザ内に保存</li><li>確定した配置は履歴に保存</li><li>クラスを選んでバックアップ保存</li><li>バックアップ読込時は取り込むクラスを選択</li><li>サンプル版は再読み込みで初期化</li></ul>
+                <ul><li>通常版のデータはこの端末のこのブラウザ内に保存</li><li>別の端末・ブラウザには自動共有されない</li><li>確定した配置は履歴に保存</li><li>クラスを選んでバックアップ保存（個人情報を含むJSON）</li><li>バックアップ読込時は取り込むクラスを選択</li><li>「全データ削除」で、このブラウザ内のSekiGaeデータを削除できる</li><li>サンプル版は再読み込みで初期化</li></ul>
             </article>
         </div>
     </section>
@@ -568,6 +568,10 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mon
             <details>
                 <summary>データが見つからない</summary>
                 <p>データはブラウザごと・端末ごとに保存されます。別の端末やブラウザでは自動共有されません。事前に保存したバックアップがあれば、「バックアップ読込」から復元できます。</p>
+            </details>
+            <details>
+                <summary>端末からデータを消したい</summary>
+                <p>データ・履歴管理の「全データ削除」を使うと、このブラウザ内のSekiGaeの全クラス、名簿、座席配置、履歴、設定を削除できます。削除前にバックアップを作成でき、確認のため「全削除」の入力が必要です。ダウンロード済みのバックアップ、PDF、印刷物、別の端末・ブラウザのデータは削除されません。</p>
             </details>
         </div>
     </section>
