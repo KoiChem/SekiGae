@@ -3262,6 +3262,9 @@ function togglePrintSettingsPanel(forceOpen) {
     printPanelOpen = open;
     document.body.classList.toggle('print-settings-closed', !open);
     toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-pressed', String(open));
+    toggle.classList.toggle('btn-success', open);
+    toggle.classList.toggle('btn-outline', !open);
     if (!open && focusWasInside) toggle.focus();
     if (open && !focusWasInside) document.getElementById('ps-print-id')?.focus();
     updatePrintPreviewChromeLayout();
