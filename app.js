@@ -1589,6 +1589,7 @@ function writeGenderBorderDataToMainUi(value) {
     const girl = document.getElementById('gb-girl-color');
     const style = document.getElementById('gb-style');
     const btn = document.getElementById('btn-gender-border');
+    const panel = document.getElementById('gender-border-settings');
     if (boy) boy.value = data.boy;
     if (girl) girl.value = data.girl;
     if (style) style.value = data.style;
@@ -1600,6 +1601,8 @@ function writeGenderBorderDataToMainUi(value) {
         btn.textContent = data.active ? 'ON' : 'OFF';
         btn.setAttribute('aria-pressed', String(data.active));
     }
+    // 現行UIではOFFでも設定欄を常時表示する。旧UI由来のインライン非表示だけを解除する。
+    if (panel) panel.style.removeProperty('display');
 }
 
 function normalizeSeatAppearanceSettings(value) {
@@ -2540,10 +2543,7 @@ function resetClassScopedSettingsUI() {
         const input = document.getElementById(`color-${idx + 1}`);
         if (input) input.value = color;
     });
-    const genderButton = document.getElementById('btn-gender-border');
-    const genderPanel = document.getElementById('gender-border-settings');
-    if (genderButton) { genderButton.classList.remove('btn-success'); genderButton.classList.add('btn-outline'); genderButton.textContent = 'OFF'; }
-    if (genderPanel) genderPanel.style.display = 'none';
+    writeGenderBorderDataToMainUi(null);
 }
 
 function deleteCurrentClass() {
