@@ -926,6 +926,23 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
     cursor: pointer; display: flex; flex-direction: column; justify-content: center; padding: 5px;
     position: relative; overflow: hidden; transition: 0.2s; user-select: none;
 }
+/* HTML5 D&D 用の画面外プロキシ。盤面の反転を継承させず、氏名を常に正立で描く。 */
+.seat-drag-ghost {
+    position: fixed;
+    top: -10000px;
+    left: -10000px;
+    z-index: 10050;
+    pointer-events: none;
+}
+.seat-drag-ghost .seat-content {
+    transform: none !important;
+    visibility: visible !important;
+}
+.seat-drag-ghost::before,
+.seat-drag-ghost::after {
+    content: none !important;
+    display: none !important;
+}
 .seat.inactive { background: var(--seat-inactive) !important; border-color: #7f8c8d !important; cursor: pointer; opacity: 0.6; }
 .seat.inactive * { display: none; }
 .seat:not(.inactive):hover { box-shadow: 0 0 5px rgba(52, 152, 219, 0.5); }

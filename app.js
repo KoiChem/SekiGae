@@ -6390,6 +6390,7 @@ function confirmExcelImport() {
 
 // --- D&D（手動スワップ・事前確認） ---
 let draggedIdx = null;
+let seatDragGhost = null;
 let manualSwapUndoStack = [];
 let manualSwapEvalCache = null;
 let manualSwapEvalCacheKeyStored = '';
@@ -6917,6 +6918,7 @@ function undoLastManualSwap() {
 }
 
 function dragStart(e, i) {
+    clearSeatDragGhost();
     if (document.body.classList.contains('print-mode') || exceptionMode || inactiveSeats.has(i)) {
         e.preventDefault();
         return;
@@ -6929,6 +6931,39 @@ function dragStart(e, i) {
     draggedIdx = i;
     clearDragOverStates();
     e.dataTransfer.effectAllowed = 'move';
+    createSeatDragGhost(e);
+}
+
+/**
+ * 反転した盤面の子要素をブラウザ既定のドラッグ画像に使うと、親の反転だけが失われて
+ * 氏名などが上下／左右反転する。画面外に通常向きの複製を置き、専用のドラッグ画像にする。
+ */
+function createSeatDragGhost(e) {
+    const source = e.currentTarget;
+    if (!source || !e.dataTransfer || typeof e.dataTransfer.setDragImage !== 'function') return;
+
+    const rect = source.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const ghost = source.cloneNode(true);
+    ghost.classList.remove('drag-over', 'manual-move-source', 'manual-move-target', 'start-highlight', 'protected-flash');
+    ghost.classList.add('seat-drag-ghost');
+    ghost.querySelectorAll('.seat-label, .overall-rule-pin').forEach(el => el.remove());
+    ghost.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    document.body.appendChild(ghost);
+
+    const grabX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const grabY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+    e.dataTransfer.setDragImage(ghost, Math.round(grabX), Math.round(grabY));
+    seatDragGhost = ghost;
+}
+
+function clearSeatDragGhost() {
+    if (seatDragGhost) seatDragGhost.remove();
+    seatDragGhost = null;
+    document.querySelectorAll('.seat-drag-ghost').forEach(ghost => ghost.remove());
 }
 
 function dragOver(e) {
@@ -6961,10 +6996,12 @@ function clearDragOverStates(except = null) {
 
 function dragEnd() {
     draggedIdx = null;
+    clearSeatDragGhost();
     clearDragOverStates();
 }
 
 function drop(e, targetIdx) {
+    clearSeatDragGhost();
     if (document.body.classList.contains('print-mode') || exceptionMode) return;
     e.preventDefault();
     e.currentTarget.classList.remove('drag-over');
