@@ -2567,7 +2567,7 @@ function initGrid() {
         const seat = document.createElement('div');
         seat.className = 'seat'; seat.dataset.index = i; seat.onclick = () => handleSeatClick(i);
         seat.draggable = true; seat.ondragstart = (e) => dragStart(e, i); seat.ondragover = (e) => dragOver(e);
-        seat.ondragleave = (e) => dragLeave(e, i); seat.ondrop = (e) => drop(e, i);
+        seat.ondragleave = (e) => dragLeave(e, i); seat.ondragend = () => dragEnd(); seat.ondrop = (e) => drop(e, i);
         seat.oncontextmenu = (e) => { e.preventDefault(); openSeatTrackModal(i); };
         seat.addEventListener('touchstart', (e) => handleSeatTrackTouchStart(e, i), { passive: true });
         seat.addEventListener('touchend', handleSeatTrackTouchEnd, { passive: false });
@@ -6927,6 +6927,7 @@ function dragStart(e, i) {
         return;
     }
     draggedIdx = i;
+    clearDragOverStates();
     e.dataTransfer.effectAllowed = 'move';
 }
 
@@ -6934,20 +6935,34 @@ function dragOver(e) {
     if (document.body.classList.contains('print-mode') || exceptionMode) return;
     e.preventDefault();
     const targetIdx = parseInt(e.currentTarget.dataset.index, 10);
-    if (draggedIdx === null || Number.isNaN(targetIdx) || inactiveSeats.has(targetIdx)) {
+    if (draggedIdx === null || Number.isNaN(targetIdx) || targetIdx === draggedIdx) {
         e.dataTransfer.dropEffect = 'none';
         return;
     }
     const assignment = getCurrentAssignmentForDrag();
-    if (!assignment[draggedIdx] || !assignment[targetIdx]) {
+    const canRelocate = inactiveSeats.has(targetIdx) && !assignment[targetIdx];
+    const canSwap = !inactiveSeats.has(targetIdx) && Boolean(assignment[targetIdx]);
+    if (!assignment[draggedIdx] || (!canRelocate && !canSwap)) {
         e.dataTransfer.dropEffect = 'none';
         return;
     }
     e.dataTransfer.dropEffect = 'move';
+    clearDragOverStates(e.currentTarget);
     e.currentTarget.classList.add('drag-over');
 }
 
 function dragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+
+function clearDragOverStates(except = null) {
+    document.querySelectorAll('.seat.drag-over').forEach(seat => {
+        if (seat !== except) seat.classList.remove('drag-over');
+    });
+}
+
+function dragEnd() {
+    draggedIdx = null;
+    clearDragOverStates();
+}
 
 function drop(e, targetIdx) {
     if (document.body.classList.contains('print-mode') || exceptionMode) return;
@@ -6955,10 +6970,19 @@ function drop(e, targetIdx) {
     e.currentTarget.classList.remove('drag-over');
     const fromIdx = draggedIdx;
     draggedIdx = null;
-    if (fromIdx === null || fromIdx === targetIdx || inactiveSeats.has(targetIdx) || inactiveSeats.has(fromIdx)) return;
+    clearDragOverStates();
+    if (fromIdx === null || fromIdx === targetIdx || inactiveSeats.has(fromIdx)) return;
 
     const assignment = getCurrentAssignmentForDrag();
-    if (!assignment[fromIdx] || !assignment[targetIdx]) return;
+    if (!assignment[fromIdx]) return;
+
+    if (inactiveSeats.has(targetIdx)) {
+        if (assignment[targetIdx]) return;
+        requestManualRelocation(fromIdx, targetIdx);
+        return;
+    }
+
+    if (!assignment[targetIdx]) return;
 
     const evalResult = evaluateSwapBeforeConfirm(assignment, fromIdx, targetIdx);
     const doSwap = () => applyPreviewSwap(fromIdx, targetIdx);

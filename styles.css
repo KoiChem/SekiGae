@@ -1066,7 +1066,14 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
 /* 生徒側では盤面が横反転するため、例外席ラベルも横方向だけを打ち消す。 */
 .classroom-wrapper.student-view .seat.gender-boy::after,
 .classroom-wrapper.student-view .seat.gender-girl::after { transform: scaleX(-1); }
-.seat.drag-over { background: #dff9fb; border-style: dashed; }
+.seat.drag-over,
+.seat.inactive-hidden.drag-over {
+    background: #dff9fb !important;
+    border: 3px dashed #1976d2 !important;
+    box-shadow: inset 0 0 0 1px #fff !important;
+    cursor: copy;
+    opacity: 1;
+}
 .seat.start-highlight { border: 4px solid #e74c3c !important; box-shadow: 0 0 15px rgba(231, 76, 60, 0.8) !important; }
 
 /* 例外席選択中: 座席固定で保護されている席（反転禁止） */
