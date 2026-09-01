@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260901-inactive-seat-drag-v1">
+<link rel="stylesheet" href="styles.css?v=20260901-landscape-color-fit-v1">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -424,7 +424,7 @@
             <input type="hidden" id="layout-rules" value="">
             
             <div id="color-palette-group" class="main-color-controls">
-                <h3>共通色</h3>
+                <h3>色設定</h3>
                 <div class="main-color-token-list" role="group" aria-label="色1から色6">
                     <button type="button" id="color-swatch-1" class="main-color-token" onclick="openColorPalette(1)" aria-label="色1のパレットを開く" aria-expanded="false">1</button>
                     <button type="button" id="color-swatch-2" class="main-color-token" onclick="openColorPalette(2)" aria-label="色2のパレットを開く" aria-expanded="false">2</button>
@@ -448,9 +448,9 @@
                 <div class="main-gender-title">男女別枠線</div>
                 <div class="main-gender-controls">
                     <button id="btn-gender-border" class="btn btn-outline" type="button" onclick="toggleGenderBorder()" aria-pressed="false">OFF</button>
-                    <label>男：<select id="gb-boy-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="男子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option></select></label>
-                    <label>女：<select id="gb-girl-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="女子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option><option value="6">6</option></select></label>
-                    <label class="main-gender-style">線：<select id="gb-style" onchange="saveAndRender()" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label>
+                    <label>男<select id="gb-boy-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="男子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option></select></label>
+                    <label>女<select id="gb-girl-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="女子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option><option value="6">6</option></select></label>
+                    <label class="main-gender-style">線<select id="gb-style" onchange="saveAndRender()" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label>
                 </div>
             </div>
 
@@ -709,6 +709,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260901-inactive-seat-drag-v1"></script>
+<script src="app.js?v=20260901-landscape-color-fit-v1"></script>
 </body>
 </html>

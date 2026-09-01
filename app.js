@@ -3149,7 +3149,7 @@ function updateColors() {
 }
 
 function createPrintColorControls() {
-    return `<section id="ps-color-controls" class="print-color-controls" aria-labelledby="ps-color-heading"><h3 id="ps-color-heading">共通色</h3><div class="print-color-token-list" role="group" aria-label="色1から色6">${[1,2,3,4,5,6].map(i => `<button type="button" id="ps-color-swatch-${i}" class="ps-color-token" data-color-index="${i}" aria-label="色${i}のパレットを開く" aria-expanded="false"><span class="print-color-token-number">${i}</span></button>`).join('')}</div><div id="ps-color-palette" class="print-color-palette" hidden></div></section>`;
+    return `<section id="ps-color-controls" class="print-color-controls" aria-labelledby="ps-color-heading"><h3 id="ps-color-heading">色設定</h3><div class="print-color-token-list" role="group" aria-label="色1から色6">${[1,2,3,4,5,6].map(i => `<button type="button" id="ps-color-swatch-${i}" class="ps-color-token" data-color-index="${i}" aria-label="色${i}のパレットを開く" aria-expanded="false"><span class="print-color-token-number">${i}</span></button>`).join('')}</div><div id="ps-color-palette" class="print-color-palette" hidden></div></section>`;
 }
 
 function createPrintLayoutTable(metas) {
