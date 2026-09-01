@@ -2389,6 +2389,7 @@ function cancelRosterImportMode() {
 
 function finishRosterCommitFromTable(tempStudents) {
     invalidateManualSwapEvalCache();
+    clearManualMoveSelection({ render: false, hideMessage: false });
     currentStudents = tempStudents;
     const studentMap = new Map();
     currentStudents.forEach(student => {
@@ -2509,6 +2510,7 @@ function switchClass(selectId = 'class-select') {
     const sourceSelect = document.getElementById(selectId) || document.getElementById('class-select') || document.getElementById('class-select-students');
     if (!sourceSelect) return;
     if(sourceSelect.value === appData.currentClassId) return;
+    clearManualMoveSelection({ render: false, hideMessage: false });
     saveCurrentClassData(); 
     appData.currentClassId = sourceSelect.value; 
     saveAppSystemData(); loadCurrentClassData();
@@ -2738,6 +2740,7 @@ function togglePrintView() {
 }
 
 function togglePrintMode() {
+    if (!document.body.classList.contains('print-mode')) clearManualMoveSelection({ render: false, hideMessage: false });
     document.body.classList.toggle('print-mode');
     const isPrintMode = document.body.classList.contains('print-mode');
     document.getElementById('print-overlay').style.display = isPrintMode ? 'block' : 'none';
@@ -3344,6 +3347,7 @@ function closePrintColorPalette(returnFocus = false) {
 
 function resetPlacement() {
     if (!confirm('現在の配置を空にします。未確定の配置がある場合は破棄されます。よろしいですか？')) return;
+    clearManualMoveSelection({ render: false, hideMessage: false });
     if (previewAssignment) {
         previewAssignment = null;
         pendingHistoryMemoOnCommit = null;
@@ -3523,6 +3527,31 @@ function handleSeatClick(index) {
         updateExceptionMessage(); return;
     }
 
+    const currentAssignment = getCurrentAssignmentForDrag();
+    const selectedSource = manualMoveSourceIdx;
+    if (selectedSource !== null) {
+        const selectedStudent = currentAssignment[selectedSource];
+        if (!selectedStudent || inactiveSeats.has(selectedSource)) {
+            clearManualMoveSelection({ render: false, hideMessage: false });
+        } else if (index === selectedSource) {
+            clearManualMoveSelection();
+            return;
+        } else if (inactiveSeats.has(index)) {
+            requestManualRelocation(selectedSource, index);
+            return;
+        } else if (currentAssignment[index]) {
+            startManualMoveSelection(index);
+            return;
+        } else {
+            return;
+        }
+    }
+
+    if (currentAssignment[index] && !inactiveSeats.has(index) && inactiveSeats.size > 0) {
+        startManualMoveSelection(index);
+        return;
+    }
+
     const seatEl = getSeatElement(index);
     if (inactiveSeats.has(index)) {
         inactiveSeats.delete(index);
@@ -3683,6 +3712,7 @@ function validateForSort() {
 
 function executeSort() {
     closeSortModal(); hideAlert();
+    clearManualMoveSelection({ render: false, hideMessage: false });
     const startPos = getCheckedRadioValue('sort-start');
     const dir = getCheckedRadioValue('sort-dir');
     const pattern = getCheckedRadioValue('sort-pattern');
@@ -3756,7 +3786,7 @@ function getStudentFairnessExemptions(student) {
     };
 }
 
-function calcAllowedSeatsForStudent(s, isCheckerboard, bounds) {
+function calcAllowedSeatsForStudent(s, isCheckerboard, bounds, inactiveSet = inactiveSeats) {
     const personal = parsePersonalRuleConstraints(s.flags);
     const specificSeatsP = personal.seats;
     const reqColsP = personal.cols;
@@ -3765,7 +3795,7 @@ function calcAllowedSeatsForStudent(s, isCheckerboard, bounds) {
 
     let cands = [];
     for(let i=0; i<TOTAL_SEATS; i++) {
-        if(inactiveSeats.has(i)) continue;
+        if(inactiveSet.has(i)) continue;
         let r = Math.floor(i/NUM_COLS), c = i % NUM_COLS;
         let valid = true;
 
@@ -3930,9 +3960,9 @@ function buildNgPairsMap(students, rulesText) {
     });
     return map;
 }
-function collectActiveSeats() {
+function collectActiveSeats(inactiveSet = inactiveSeats) {
     const seats = [];
-    for (let i = 0; i < TOTAL_SEATS; i++) if (!inactiveSeats.has(i)) seats.push(i);
+    for (let i = 0; i < TOTAL_SEATS; i++) if (!inactiveSet.has(i)) seats.push(i);
     return seats;
 }
 function prepareStudentSeatConstraints(students, checkerboard, gridBounds) {
@@ -3975,14 +4005,14 @@ function buildPlacementContext(students, rulesText) {
  * 探索で候補配置を採用する直前の完全性検証。
  * allowedSeats は備考・全体ルール・固定席・市松・空席を、canPlaceAt はNG隣接を既に判定する。
  */
-function createAssignmentHardValidator(students, canPlaceAt) {
+function createAssignmentHardValidator(students, canPlaceAt, inactiveSet = inactiveSeats) {
     const expectedById = new Map(students.map(student => [student.id, student]));
     return assignment => {
         if (!Array.isArray(assignment) || assignment.length !== TOTAL_SEATS) return false;
         const foundIds = new Set();
         for (let seatIdx = 0; seatIdx < TOTAL_SEATS; seatIdx++) {
             const student = assignment[seatIdx];
-            if (inactiveSeats.has(seatIdx)) {
+            if (inactiveSet.has(seatIdx)) {
                 if (student) return false;
                 continue;
             }
@@ -3998,8 +4028,8 @@ function createAssignmentHardValidator(students, canPlaceAt) {
     };
 }
 
-function createSwapValidators(isCheckerboard, canPlaceAt, students) {
-    const isAssignmentHardValid = createAssignmentHardValidator(students, canPlaceAt);
+function createSwapValidators(isCheckerboard, canPlaceAt, students, inactiveSet = inactiveSeats) {
+    const isAssignmentHardValid = createAssignmentHardValidator(students, canPlaceAt, inactiveSet);
     const isSwapHardValid = (arr, idx1, idx2, s1, s2) => isAssignmentHardValid(arr);
     const canSwapByCheckerboardRule = (s1, s2) => {
         if (!isCheckerboard) return true;
@@ -4054,7 +4084,7 @@ function finalizeShuffleSuccess(bestAssign, finalScore) {
     isShuffleCancelled = false;
     renderAssignments();
 }
-function buildScoreContext(bounds, pastMaps) {
+function buildScoreContext(bounds, pastMaps, inactiveSet = inactiveSeats) {
     const currMinRByCol = Array(NUM_COLS).fill(-1);
     const currMaxRByCol = Array(NUM_COLS).fill(-1);
     for (let c = 0; c < NUM_COLS; c++) {
@@ -4062,7 +4092,7 @@ function buildScoreContext(bounds, pastMaps) {
         let maxR = -1;
         for (let r = 0; r < NUM_ROWS; r++) {
             const idx = r * NUM_COLS + c;
-            if (inactiveSeats.has(idx)) continue;
+            if (inactiveSet.has(idx)) continue;
             if (r < minR) minR = r;
             if (r > maxR) maxR = r;
         }
@@ -5206,6 +5236,7 @@ function renderCheckerboardPatternModal({ ok0, ok1, conflicts0, conflicts1 }) {
 
 function openCheckerboardPatternModal() {
     if (isCalculating) return;
+    clearManualMoveSelection({ render: false, hideMessage: false });
     guardBothEdgesWindowForShuffle(() => openCheckerboardPatternModalImpl());
 }
 
@@ -5305,6 +5336,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
     }
     const shuffleRun = resolveShuffleRunFromInput();
     if (!shuffleRun) return;
+    clearManualMoveSelection({ render: false, hideMessage: false });
     shuffleRun.isCheckerboard = Boolean(isCheckerboard);
     isShuffleCancelled = false;
     activeShuffleRun = shuffleRun;
@@ -5416,6 +5448,7 @@ function cancelExceptionMode() {
 }
 
 function startExceptionSelection() {
+    clearManualMoveSelection({ render: false, hideMessage: false });
     document.getElementById('modal-overlay').style.display = 'none';
     protectedExceptionSeats = computeProtectedExceptionSeats();
     for (let i = 0; i < TOTAL_SEATS; i++) {
@@ -5730,7 +5763,10 @@ function renderAssignments() {
     if(exceptionMode) return;
     updateGridRowsVisibility();
     const seatGridElement = document.getElementById('seat-grid');
-    if (seatGridElement) seatGridElement.classList.toggle('previewing', Boolean(previewAssignment));
+    if (seatGridElement) {
+        seatGridElement.classList.toggle('previewing', Boolean(previewAssignment));
+        seatGridElement.classList.toggle('manual-move-selecting', manualMoveSourceIdx !== null);
+    }
     const cfg = getRenderConfig();
     const currentData = cfg.currentData;
     const rulesEl = document.getElementById('overall-rules');
@@ -5755,11 +5791,13 @@ function renderAssignments() {
         seatEl.removeAttribute('title');
         seatEl.classList.remove('inactive');
         seatEl.classList.remove('inactive-hidden');
+        seatEl.classList.remove('manual-move-source', 'manual-move-target');
         seatEl.classList.remove('gender-boy', 'gender-girl');
         updateOverallRulePin(seatEl, null, parsedOverallRules);
         if (inactiveSeats.has(i)) {
             seatEl.classList.add('inactive');
             seatEl.classList.add('inactive-hidden');
+            if (manualMoveSourceIdx !== null) seatEl.classList.add('manual-move-target');
             labelEl.style.display = 'none';
             if (document.body.classList.contains('print-mode')) {
                 seatEl.style.display = 'none';
@@ -5768,6 +5806,8 @@ function renderAssignments() {
             }
             continue;
         }
+
+        if (manualMoveSourceIdx === i) seatEl.classList.add('manual-move-source');
 
         const student = currentData[i];
         if (student) {
@@ -5844,6 +5884,7 @@ function syncLandscapeScreenGridAspect() {
 
 function commitSeats() {
     if(!previewAssignment) return;
+    clearManualMoveSelection({ render: false, hideMessage: false });
     invalidateManualSwapEvalCache();
     const previewPointDetails = getPreviewPointDetails();
     seatAssignment = [...previewAssignment]; previewAssignment = null;
@@ -5873,6 +5914,7 @@ function commitSeats() {
 
 function cancelPreview() {
     if (!previewAssignment) return;
+    clearManualMoveSelection({ render: false, hideMessage: false });
     previewAssignment = null;
     pendingHistoryMemoOnCommit = null;
     clearPendingHistoryShuffleMeta();
@@ -6351,6 +6393,8 @@ let draggedIdx = null;
 let manualSwapUndoStack = [];
 let manualSwapEvalCache = null;
 let manualSwapEvalCacheKeyStored = '';
+let manualMoveSourceIdx = null;
+let manualMoveEscListener = null;
 let swapConfirmProceedCallback = null;
 let swapConfirmCancelCallback = null;
 let swapConfirmEscListener = null;
@@ -6370,15 +6414,19 @@ function updateManualSwapUndoButton() {
     setPreviewActionButtonVisibility('btn-undo-manual-swap', previewAssignment && manualSwapUndoStack.length > 0);
 }
 
-function manualSwapCacheKey() {
-    const rulesEl = document.getElementById('overall-rules');
-    const rules = rulesEl ? rulesEl.value : '';
-    return `${currentStudents.length}|${inactiveSeats.size}|${histories.length}|${checkerboardOffset}|${rules}`;
+function inactiveSeatSignature(inactiveSet = inactiveSeats) {
+    return Array.from(inactiveSet).sort((a, b) => a - b).join(',');
 }
 
-function prepareStudentSeatConstraintsSilent(students, checkerboard, gridBounds) {
+function manualSwapCacheKey(inactiveSet = inactiveSeats) {
+    const rulesEl = document.getElementById('overall-rules');
+    const rules = rulesEl ? rulesEl.value : '';
+    return `${currentStudents.length}|${inactiveSeatSignature(inactiveSet)}|${histories.length}|${checkerboardOffset}|${rules}`;
+}
+
+function prepareStudentSeatConstraintsSilent(students, checkerboard, gridBounds, inactiveSet = inactiveSeats) {
     for (const student of students) {
-        const allowedSeats = calcAllowedSeatsForStudent(student, checkerboard, gridBounds);
+        const allowedSeats = calcAllowedSeatsForStudent(student, checkerboard, gridBounds, inactiveSet);
         if (allowedSeats.length === 0) return false;
         student.allowedSeats = allowedSeats;
         student.fairnessExemptions = getStudentFairnessExemptions(student);
@@ -6387,8 +6435,8 @@ function prepareStudentSeatConstraintsSilent(students, checkerboard, gridBounds)
     return true;
 }
 
-function buildManualSwapEvalContext() {
-    const key = manualSwapCacheKey();
+function buildManualSwapEvalContext(inactiveSet = inactiveSeats) {
+    const key = manualSwapCacheKey(inactiveSet);
     if (manualSwapEvalCache && manualSwapEvalCacheKeyStored === key) return manualSwapEvalCache;
 
     const students = JSON.parse(JSON.stringify(currentStudents));
@@ -6398,7 +6446,7 @@ function buildManualSwapEvalContext() {
     assignPlacementRulesToStudents(students, parsedRuleSet);
     const bounds = getGridBoundaries();
     const isCheckerboard = Boolean(pendingHistoryShuffleMeta && pendingHistoryShuffleMeta.isCheckerboard);
-    if (!prepareStudentSeatConstraintsSilent(students, isCheckerboard, bounds)) return null;
+    if (!prepareStudentSeatConstraintsSilent(students, isCheckerboard, bounds, inactiveSet)) return null;
 
     const preparedById = new Map(students.map(s => [s.id, s]));
     const placementContext = buildPlacementContext(students, rulesText);
@@ -6412,9 +6460,9 @@ function buildManualSwapEvalContext() {
         }
         return true;
     };
-    const swapValidators = createSwapValidators(isCheckerboard, canPlaceAt, students);
+    const swapValidators = createSwapValidators(isCheckerboard, canPlaceAt, students, inactiveSet);
     const pastMaps = buildPastConstraintMaps(students, histories);
-    const scoreContext = buildScoreContext(bounds, pastMaps);
+    const scoreContext = buildScoreContext(bounds, pastMaps, inactiveSet);
     const evaluateAssignment = (a) => analyzeSoftConstraintsWithContext(a, scoreContext);
 
     manualSwapEvalCache = {
@@ -6638,6 +6686,139 @@ function evaluateSwapBeforeConfirm(assignment, idx1, idx2) {
     return { kind: 'ok' };
 }
 
+function buildRelocatedState(assignment, fromIdx, toIdx) {
+    const nextAssignment = assignment.slice();
+    const nextInactiveSeats = new Set(inactiveSeats);
+    nextAssignment[toIdx] = nextAssignment[fromIdx];
+    nextAssignment[fromIdx] = null;
+    nextInactiveSeats.add(fromIdx);
+    nextInactiveSeats.delete(toIdx);
+    return { nextAssignment, nextInactiveSeats };
+}
+
+function collectRelocationHardViolations(nextAssignment, toIdx, student, ctx) {
+    const msgs = [];
+    if (!student) return ['移動元の生徒が見つかりません'];
+    if (!student.allowedSeats.includes(toIdx)) {
+        let expectedGender = getDefaultSeatGender(toIdx);
+        if (currentExceptions.has(toIdx)) expectedGender = expectedGender === '男' ? '女' : '男';
+        if (ctx.isCheckerboard && student.gender && student.gender !== expectedGender) {
+            msgs.push(`${formatSwapStudentBrief(student)}（${student.gender}）は ${getSeatLabel(toIdx)} 席に座れません（市松模様）`);
+        } else {
+            const hint = student.hasFixed ? '固定席' : '席指定';
+            msgs.push(`${formatSwapStudentBrief(student)} は ${getSeatLabel(toIdx)} 席に座れません（${hint}）`);
+        }
+    } else if (!ctx.canPlaceAt(nextAssignment, student, toIdx)) {
+        msgs.push(...collectNgAdjacencyViolationsForSeat(nextAssignment, student, toIdx, ctx.placementContext));
+    }
+    if (!ctx.swapValidators.isAssignmentHardValid(nextAssignment) && msgs.length === 0) {
+        msgs.push('移動後の配置が必須ルールを満たしません');
+    }
+    return msgs;
+}
+
+function evaluateRelocationBeforeConfirm(assignment, fromIdx, toIdx) {
+    if (fromIdx === toIdx || inactiveSeats.has(fromIdx) || !inactiveSeats.has(toIdx) || !assignment[fromIdx] || assignment[toIdx]) {
+        return { kind: 'error' };
+    }
+    const { nextAssignment, nextInactiveSeats } = buildRelocatedState(assignment, fromIdx, toIdx);
+    const beforeCtx = buildManualSwapEvalContext(inactiveSeats);
+    const afterCtx = buildManualSwapEvalContext(nextInactiveSeats);
+    if (!beforeCtx || !afterCtx) return { kind: 'error' };
+
+    const student = swapEvalStudent(assignment[fromIdx], afterCtx.preparedById);
+    const hardMsgs = collectRelocationHardViolations(nextAssignment, toIdx, student, afterCtx);
+    if (hardMsgs.length) {
+        return {
+            kind: 'hard',
+            message: '【警告】\n' + hardMsgs.map(m => `・${m}`).join('\n')
+        };
+    }
+
+    const beforeDetails = beforeCtx.evaluateAssignment(assignment);
+    const afterDetails = afterCtx.evaluateAssignment(nextAssignment);
+    const comparison = compareSoftConstraintEvaluations(afterDetails, beforeDetails);
+    if (comparison > 0) {
+        let message = `公平性評価が悪化します。\n前：${describeFairnessEvaluation(beforeDetails)}\n後：${describeFairnessEvaluation(afterDetails)}`;
+        const detailBlock = buildSwapScoreWorsenMessage(beforeDetails, afterDetails, [student]);
+        if (detailBlock) message += '\n\n' + detailBlock;
+        return { kind: 'soft', message };
+    }
+    return { kind: 'ok' };
+}
+
+function clearManualMoveSelection(options = {}) {
+    const { render = true, hideMessage = true } = options;
+    manualMoveSourceIdx = null;
+    if (manualMoveEscListener) {
+        document.removeEventListener('keydown', manualMoveEscListener);
+        manualMoveEscListener = null;
+    }
+    if (hideMessage) hideAlert();
+    if (render) renderAssignments();
+}
+
+function startManualMoveSelection(index) {
+    if (document.body.classList.contains('print-mode') || exceptionMode || isCalculating || inactiveSeats.size === 0) return;
+    const assignment = getCurrentAssignmentForDrag();
+    if (inactiveSeats.has(index) || !assignment[index]) return;
+    manualMoveSourceIdx = index;
+    if (!manualMoveEscListener) {
+        manualMoveEscListener = e => {
+            if (e.key === 'Escape' || e.key === 'Esc') clearManualMoveSelection();
+        };
+        document.addEventListener('keydown', manualMoveEscListener);
+    }
+    renderAssignments();
+    showAlert('移動先の空席を選んでください。同じ生徒をもう一度選ぶと解除できます。', 'info');
+}
+
+function applyPreviewRelocation(fromIdx, toIdx) {
+    if (!previewAssignment) {
+        previewAssignment = [...seatAssignment];
+        setActionButtons(true, false);
+    }
+    if (!previewInactiveSeatsBackup) previewInactiveSeatsBackup = new Set(inactiveSeats);
+
+    const assignment = previewAssignment;
+    const student = assignment[fromIdx];
+    if (!student || assignment[toIdx] || inactiveSeats.has(fromIdx) || !inactiveSeats.has(toIdx)) return;
+    const fromLabel = getSeatLabel(fromIdx);
+    const toLabel = getSeatLabel(toIdx);
+
+    assignment[fromIdx] = null;
+    assignment[toIdx] = student;
+    inactiveSeats.add(fromIdx);
+    inactiveSeats.delete(toIdx);
+    inactiveSeatBackup.delete(fromIdx);
+    inactiveSeatBackup.delete(toIdx);
+    manualSwapUndoStack.push({ type: 'relocate', fromIdx, toIdx });
+    invalidateManualSwapEvalCache();
+    updateManualSwapUndoButton();
+    markPendingShuffleAsManuallyModified();
+    clearManualMoveSelection({ render: false, hideMessage: false });
+    updateCounters();
+    renderAssignments();
+    showAlert(`${formatSwapStudentBrief(student)} を ${fromLabel}席から ${toLabel}席へ移動しました。元の${fromLabel}席は空席になりました。内容を確認し、「座席を確定」を押してください。`, 'success');
+}
+
+function requestManualRelocation(fromIdx, toIdx) {
+    if (isCalculating) return;
+    const assignment = getCurrentAssignmentForDrag();
+    const evalResult = evaluateRelocationBeforeConfirm(assignment, fromIdx, toIdx);
+    const doMove = () => applyPreviewRelocation(fromIdx, toIdx);
+    if (evalResult.kind === 'ok') {
+        doMove();
+        return;
+    }
+    if (evalResult.kind === 'error') return;
+    if (evalResult.kind === 'hard') {
+        showSwapConfirmModal('hard', evalResult.message, '移動を実行する', doMove, () => {}, '移動の警告');
+        return;
+    }
+    showSwapConfirmModal('soft', evalResult.message, '移動する', doMove, () => {}, '移動の確認');
+}
+
 function dismissSwapConfirmModal() {
     const modal = document.getElementById('swap-confirm-modal');
     if (modal) {
@@ -6652,7 +6833,7 @@ function dismissSwapConfirmModal() {
     }
 }
 
-function showSwapConfirmModal(mode, message, proceedLabel, onProceed, onCancel) {
+function showSwapConfirmModal(mode, message, proceedLabel, onProceed, onCancel, title = '') {
     const modal = document.getElementById('swap-confirm-modal');
     const titleEl = document.getElementById('swap-confirm-title');
     const msgEl = document.getElementById('swap-confirm-message');
@@ -6663,7 +6844,7 @@ function showSwapConfirmModal(mode, message, proceedLabel, onProceed, onCancel) 
     }
     modal.classList.remove('swap-confirm-modal--hard', 'swap-confirm-modal--soft');
     modal.classList.add(mode === 'hard' ? 'swap-confirm-modal--hard' : 'swap-confirm-modal--soft');
-    if (titleEl) titleEl.textContent = mode === 'hard' ? '入れ替えの警告' : '入れ替えの確認';
+    if (titleEl) titleEl.textContent = title || (mode === 'hard' ? '入れ替えの警告' : '入れ替えの確認');
     msgEl.textContent = message;
     proceedBtn.textContent = proceedLabel;
     swapConfirmProceedCallback = onProceed;
@@ -6702,20 +6883,36 @@ function applyPreviewSwap(idx1, idx2) {
     const temp = arr[idx1];
     arr[idx1] = arr[idx2];
     arr[idx2] = temp;
-    manualSwapUndoStack.push({ idx1, idx2 });
+    manualSwapUndoStack.push({ type: 'swap', idx1, idx2 });
     updateManualSwapUndoButton();
     markPendingShuffleAsManuallyModified();
+    clearManualMoveSelection({ render: false, hideMessage: false });
     renderAssignments();
 }
 
 function undoLastManualSwap() {
     if (!previewAssignment || manualSwapUndoStack.length === 0) return;
     const last = manualSwapUndoStack.pop();
-    const temp = previewAssignment[last.idx1];
-    previewAssignment[last.idx1] = previewAssignment[last.idx2];
-    previewAssignment[last.idx2] = temp;
+    if (last.type === 'relocate') {
+        const student = previewAssignment[last.toIdx];
+        if (student) {
+            previewAssignment[last.toIdx] = null;
+            previewAssignment[last.fromIdx] = student;
+            inactiveSeats.delete(last.fromIdx);
+            inactiveSeats.add(last.toIdx);
+            inactiveSeatBackup.delete(last.fromIdx);
+            inactiveSeatBackup.delete(last.toIdx);
+            invalidateManualSwapEvalCache();
+            updateCounters();
+        }
+    } else {
+        const temp = previewAssignment[last.idx1];
+        previewAssignment[last.idx1] = previewAssignment[last.idx2];
+        previewAssignment[last.idx2] = temp;
+    }
     updateManualSwapUndoButton();
     markPendingShuffleAsManuallyModified();
+    clearManualMoveSelection({ render: false, hideMessage: false });
     renderAssignments();
 }
 
@@ -6783,13 +6980,15 @@ function drop(e, targetIdx) {
 function saveCurrentClassData() {
     syncSoftScoresFromInputs();
     const appearance = readSeatAppearanceSettingsFromMainUi();
+    // プレビュー中の空席移動は、確定するまで保存データへ混ぜない。
+    const persistedInactiveSeats = previewInactiveSeatsBackup || inactiveSeats;
     const data = {
         students: currentStudents, rulesRaw: document.getElementById('overall-rules').value, layoutRaw: document.getElementById('layout-rules').value,
         seatLayoutFields: appearance.seatLayoutFields,
         ...exportFairnessSettings(),
         ...exportSoftScoreSettings(),
         ...exportEdgeSettings(),
-        inactiveSeats: Array.from(inactiveSeats), assignment: seatAssignment, histories: histories, recentShuffleRuns: recentShuffleRuns, colors: appearance.colors,
+        inactiveSeats: Array.from(persistedInactiveSeats), assignment: seatAssignment, histories: histories, recentShuffleRuns: recentShuffleRuns, colors: appearance.colors,
         shuffleSeedInput: shuffleSeedInput,
         lastUsedShuffleSeed: lastUsedShuffleSeed,
         lastBackupAt: lastBackupAt,
@@ -6801,6 +7000,7 @@ function saveCurrentClassData() {
 
 function loadCurrentClassData() {
     invalidateManualSwapEvalCache();
+    clearManualMoveSelection({ render: false, hideMessage: false });
     let dataStr = localStorage.getItem(`${PREFIX}data_${appData.currentClassId}`);
     if (!dataStr) dataStr = localStorage.getItem(`SekigaeKun_v5_data_${appData.currentClassId}`);
     if (!dataStr) dataStr = localStorage.getItem(`SekigaeKun_v4_data_${appData.currentClassId}`);
@@ -6917,6 +7117,7 @@ function requestHistorySelectionToBoard() {
 /** プルダウンで選んだ履歴の座席・空席を確定盤面として反映（グレー予約状態にはしない） */
 function applyHistorySelectionToBoard() {
     invalidateManualSwapEvalCache();
+    clearManualMoveSelection({ render: false, hideMessage: false });
     const sel = document.getElementById('history-select');
     if (!sel) return;
     const selectedIndex = sel.value;

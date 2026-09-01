@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260824-compact-control-v1">
+<link rel="stylesheet" href="styles.css?v=20260901-inactive-seat-move-v1">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -381,7 +381,7 @@
             </div>
             <div class="flex-row preview-action-buttons is-action-group-empty" style="gap: 10px;">
                 <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-show-log" style="padding: 10px 15px;" onclick="showLogModal()">詳細ログ</button>
-                <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-undo-manual-swap" style="padding: 10px 15px;" onclick="undoLastManualSwap()">手動入替を戻す</button>
+                <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-undo-manual-swap" style="padding: 10px 15px;" onclick="undoLastManualSwap()">手動変更を戻す</button>
                 <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-cancel-preview" style="padding: 10px 15px;" onclick="cancelPreview()">キャンセル</button>
                 <button class="btn action-preview-button is-action-hidden" id="btn-commit" style="padding: 10px 25px; font-size: 1.2em;" onclick="commitSeats()">座席を確定</button>
             </div>
@@ -709,6 +709,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260824-compact-control-v1"></script>
+<script src="app.js?v=20260901-inactive-seat-move-v1"></script>
 </body>
 </html>
