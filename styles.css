@@ -1000,6 +1000,19 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
     border-color: #dfe3e8 !important;
     opacity: 1;
 }
+/* シャッフル結果の確認中だけ、非アクティブ席の位置を薄い座標で示す。 */
+.seat-grid.shuffle-previewing .seat.inactive-hidden .seat-label {
+    display: block !important;
+    color: #6b7280;
+    font-size: clamp(10px, 1.2vw, 14px);
+    font-weight: 600;
+    opacity: 0.45;
+}
+/* 空席移動中は「移動先」を中央で優先し、座標は端へ退避させる。 */
+.seat-grid.shuffle-previewing.manual-move-selecting .seat.manual-move-target .seat-label {
+    top: 18%;
+    font-size: clamp(9px, 1vw, 12px);
+}
 
 .seat-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scaleY(-1); font-size: 1.5em; color: #aaa; font-weight: bold; pointer-events: none; transition: 0s; }
 .seat-content {

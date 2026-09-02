@@ -801,6 +801,36 @@ function getSelectedHistoryMemoForDesk() {
     return (histories[sel.value].memo || '').trim();
 }
 
+/** PDF保存候補に使えるよう、クラス名・配置名の表示値だけを安全なファイル名部分へ整える。 */
+function sanitizePrintFilenamePart(value) {
+    return String(value == null ? '' : value)
+        .trim()
+        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/[.\s]+$/g, '')
+        .trim();
+}
+
+/** ブラウザのPDF保存ダイアログへ渡す候補名のベース（拡張子なし）。 */
+function buildPrintFilenameBase() {
+    const className = sanitizePrintFilenamePart(getCurrentClassName());
+    const memo = sanitizePrintFilenamePart(getSelectedHistoryMemoForDesk());
+    if (className && memo) return `${className}_${memo}`;
+    return className || memo || 'SekiGae';
+}
+
+function preparePrintDocumentTitle() {
+    if (printDocumentTitleBackup === null) printDocumentTitleBackup = document.title;
+    document.title = buildPrintFilenameBase();
+}
+
+function restorePrintDocumentTitle() {
+    if (printDocumentTitleBackup === null) return;
+    document.title = printDocumentTitleBackup;
+    printDocumentTitleBackup = null;
+}
+
 /** `[クラス名] メモ`（クラス名のみ strong / メモは通常の太さ想定で HTML） */
 function buildDeskTitleInnerHtml() {
     const cls = getCurrentClassName() || '';
@@ -948,6 +978,8 @@ let printPanelOpen = false;
 let printRenderGeneration = 0;
 let printScreenScale = 1;
 let printPaletteRestoreTarget = null;
+/** 印刷ダイアログへ渡す候補名のため、一時的に置き換えたページタイトルの退避値。 */
+let printDocumentTitleBackup = null;
 
 const SEAT_LAYOUT_FONT_LABELS = { gothic: 'ゴシック', mincho: '明朝', maru: '丸ゴ', kyokasho: '教科書' };
 
@@ -2650,6 +2682,7 @@ function applyPrintScreenScale() {
 }
 
 function restorePrintScreenState() {
+    restorePrintDocumentTitle();
     if (!document.body.classList.contains('print-mode')) return;
     requestAnimationFrame(() => {
         updatePrintToolbarInset();
@@ -2979,22 +3012,28 @@ function fitAllPrintSeatsSync() {
 
 /** 印刷を実行（フィット未完のまま空白で印刷されないよう、押下時に同期フィット → 印刷） */
 function executePrint() {
-    resetPrintScreenScale();
-    applyPrintOrientation();
-    if (!document.body.classList.contains('print-mode')) {
+    preparePrintDocumentTitle();
+    try {
+        resetPrintScreenScale();
+        applyPrintOrientation();
+        if (!document.body.classList.contains('print-mode')) {
+            window.print();
+            return;
+        }
+        const grid = document.getElementById('print-seat-grid');
+        if (grid) {
+            const bounds = getGridBoundaries();
+            const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
+            const visibleRows = Math.max(1, bounds.currMaxR - bounds.currMinR + 1);
+            fitPrintDeskClassName();
+            fitPrintGridLayout(grid, visibleRows, visibleCols);
+        }
+        fitAllPrintSeatsSync();
         window.print();
-        return;
+    } catch (error) {
+        restorePrintDocumentTitle();
+        throw error;
     }
-    const grid = document.getElementById('print-seat-grid');
-    if (grid) {
-        const bounds = getGridBoundaries();
-        const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
-        const visibleRows = Math.max(1, bounds.currMaxR - bounds.currMinR + 1);
-        fitPrintDeskClassName();
-        fitPrintGridLayout(grid, visibleRows, visibleCols);
-    }
-    fitAllPrintSeatsSync();
-    window.print();
 }
 
 function updateGridRowsVisibility() {
@@ -5765,6 +5804,7 @@ function renderAssignments() {
     const seatGridElement = document.getElementById('seat-grid');
     if (seatGridElement) {
         seatGridElement.classList.toggle('previewing', Boolean(previewAssignment));
+        seatGridElement.classList.toggle('shuffle-previewing', Boolean(previewAssignment && pendingHistoryShuffleMeta));
         seatGridElement.classList.toggle('manual-move-selecting', manualMoveSourceIdx !== null);
     }
     const cfg = getRenderConfig();
