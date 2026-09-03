@@ -984,14 +984,23 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
 /* 未確定表示は枠線ではなく座席内背景で示す */
 .seat.uncommitted:not(.inactive) .seat-content { background: #dfe3e8; }
 .seat.has-adjustment-points:not(.inactive) { border-color: #c08a00 !important; box-shadow: inset 0 0 0 2px #ffe7a0; }
+.seat-corner-markers {
+    position: absolute; bottom: 3px; left: 4px; z-index: 3;
+    display: flex; align-items: center; gap: 2px;
+    transform: scaleY(-1); pointer-events: none;
+}
+.ng-magnet {
+    display: inline-block; color: #2c3e50; font-size: 18px; line-height: 1;
+    filter: drop-shadow(0 0 0.8px #fff) drop-shadow(0 1px 1px rgba(0,0,0,0.22));
+}
+.ng-magnet[hidden] { display: none; }
 .overall-rule-pin {
-    position: absolute; bottom: 3px; left: 4px; z-index: 3; width: 22px; height: 22px;
-    color: #c0392b; transform: scaleY(-1); pointer-events: none;
+    width: 22px; height: 22px; color: #c0392b; pointer-events: none;
     filter: drop-shadow(0 0 0.8px #fff) drop-shadow(0 1px 1px rgba(0,0,0,0.22));
 }
 .overall-rule-pin.is-row-col { color: #27823a; }
 .overall-rule-pin svg { display: block; width: 100%; height: 100%; }
-.classroom-wrapper.student-view .overall-rule-pin {
+.classroom-wrapper.student-view .seat-corner-markers {
     top: 3px; right: 4px; bottom: auto; left: auto; transform: scaleX(-1);
 }
 .seat-grid.previewing { background: #dfe3e8; }
@@ -1609,6 +1618,12 @@ body.print-orientation-portrait .print-seat-grid {
     }
 }
 @media (max-width: 599px) {
+    body.ui-layout-portrait .seat-corner-markers { bottom: 2px; left: 2px; gap: 1px; }
+    body.ui-layout-portrait .ng-magnet { font-size: 15px; }
+    body.ui-layout-portrait .overall-rule-pin { width: 16px; height: 16px; }
+    body.ui-layout-portrait .classroom-wrapper.student-view .seat-corner-markers {
+        top: 2px; right: 2px; bottom: auto; left: auto;
+    }
     #print-overlay { padding: 6px 8px; }
     .print-toolbar-head { justify-content: space-between; }
     .print-preview-title { font-size: 0.9rem; }

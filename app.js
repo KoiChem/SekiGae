@@ -1892,6 +1892,14 @@ function updateOverallRulePin(seatEl, student, parsedRuleSet) {
     pinEl.title = label;
 }
 
+/** NG隣接禁止が有効な生徒を、座席左上の磁石マークで示す。 */
+function updateNgMagnet(seatEl, student, ngMap) {
+    const magnetEl = seatEl && seatEl.querySelector('.ng-magnet');
+    if (!magnetEl) return;
+    const peers = student && ngMap ? ngMap[student.id] : null;
+    magnetEl.hidden = !(peers && peers.size > 0);
+}
+
 /** 備考欄 @（…）が論理的に許す座席インデックス集合。hasHardRule が false のときは null（交差チェック対象外）。 */
 function buildPersonalLogicalAllowedSeatSet(personal) {
     if (!personal.hasHardRule) return null;
@@ -2608,12 +2616,23 @@ function initGrid() {
 
         const label = document.createElement('div'); label.className = 'seat-label'; label.innerText = getSeatLabel(i);
         const content = document.createElement('div'); content.className = 'seat-content'; content.id = `seat-content-${i}`;
+        const markers = document.createElement('div');
+        markers.className = 'seat-corner-markers';
+        const magnet = document.createElement('span');
+        magnet.className = 'ng-magnet';
+        magnet.hidden = true;
+        magnet.setAttribute('role', 'img');
+        magnet.setAttribute('aria-label', 'NG隣接禁止あり');
+        magnet.title = 'NG隣接禁止あり';
+        magnet.textContent = '🧲';
         const pin = document.createElement('span');
         pin.className = 'overall-rule-pin';
         pin.hidden = true;
         pin.setAttribute('role', 'img');
         pin.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.25C8.15 2.25 5 5.2 5 8.85c0 4.72 7 12.9 7 12.9s7-8.18 7-12.9c0-3.65-3.15-6.6-7-6.6Zm0 9.1a2.55 2.55 0 1 1 0-5.1 2.55 2.55 0 0 1 0 5.1Z"/></svg>';
-        seat.appendChild(label); seat.appendChild(content); seat.appendChild(pin); grid.appendChild(seat);
+        markers.appendChild(magnet);
+        markers.appendChild(pin);
+        seat.appendChild(label); seat.appendChild(content); seat.appendChild(markers); grid.appendChild(seat);
     }
 }
 
@@ -5810,7 +5829,9 @@ function renderAssignments() {
     const cfg = getRenderConfig();
     const currentData = cfg.currentData;
     const rulesEl = document.getElementById('overall-rules');
-    const parsedOverallRules = parseOverallRulesText(rulesEl ? rulesEl.value.trim() : '');
+    const rulesText = rulesEl ? rulesEl.value.trim() : '';
+    const parsedOverallRules = parseOverallRulesText(rulesText);
+    const ngMap = buildNgPairsMap(currentStudents, rulesText);
     const previewPointDetails = getPreviewPointDetails();
     syncShuffleSeedControlsFromState(previewPointDetails);
     const previewLegend = document.getElementById('preview-points-legend');
@@ -5834,6 +5855,7 @@ function renderAssignments() {
         seatEl.classList.remove('manual-move-source', 'manual-move-target');
         seatEl.classList.remove('gender-boy', 'gender-girl');
         updateOverallRulePin(seatEl, null, parsedOverallRules);
+        updateNgMagnet(seatEl, null, ngMap);
         if (inactiveSeats.has(i)) {
             seatEl.classList.add('inactive');
             seatEl.classList.add('inactive-hidden');
@@ -5852,6 +5874,7 @@ function renderAssignments() {
         const student = currentData[i];
         if (student) {
             updateOverallRulePin(seatEl, student, parsedOverallRules);
+            updateNgMagnet(seatEl, student, ngMap);
             const pointSummary = formatStudentPointSummary(previewPointDetails, student.id);
             if (pointSummary) {
                 seatEl.classList.add('has-adjustment-points');
@@ -6988,7 +7011,7 @@ function createSeatDragGhost(e) {
     const ghost = source.cloneNode(true);
     ghost.classList.remove('drag-over', 'manual-move-source', 'manual-move-target', 'start-highlight', 'protected-flash');
     ghost.classList.add('seat-drag-ghost');
-    ghost.querySelectorAll('.seat-label, .overall-rule-pin').forEach(el => el.remove());
+    ghost.querySelectorAll('.seat-label, .seat-corner-markers').forEach(el => el.remove());
     ghost.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
