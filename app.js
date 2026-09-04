@@ -262,6 +262,149 @@ function depthsLabel(depthArr) {
     return [...new Set(depthArr)].sort((a, b) => a - b).map(depthLabel).join('・');
 }
 
+// --- 名簿表の編集Undo・削除モード ---
+const ROSTER_UNDO_LIMIT = 50;
+let rosterUndoStack = [];
+let rosterCellEditState = null;
+let rosterDeleteMode = false;
+
+function getRosterTableBody() {
+    return document.querySelector('#students-table tbody');
+}
+
+function getRosterEditableCell(target) {
+    let element = target;
+    while (element && element.nodeType !== Node.ELEMENT_NODE) element = element.parentNode;
+    const td = element && typeof element.closest === 'function' ? element.closest('td[contenteditable="true"]') : null;
+    const table = document.getElementById('students-table');
+    return td && table && table.contains(td) ? td : null;
+}
+
+function getRosterCellLocation(td) {
+    const tr = td?.parentElement;
+    const tbody = tr?.parentElement;
+    if (!tbody || tbody.tagName !== 'TBODY') return null;
+    const rowIndex = Array.from(tbody.rows).indexOf(tr);
+    const cellIndex = Array.from(tr.cells).indexOf(td);
+    return rowIndex >= 0 && cellIndex >= 0 && cellIndex < 7 ? { rowIndex, cellIndex } : null;
+}
+
+function readRosterTableRows() {
+    const keys = ['id', 'name', 'kana', 'gender', 'attr1', 'attr2', 'flags'];
+    return Array.from(document.querySelectorAll('#students-table tbody tr')).map(tr => {
+        const cells = tr.querySelectorAll('td[contenteditable="true"]');
+        return Object.fromEntries(keys.map((key, index) => [key, cells[index]?.innerText || '']));
+    });
+}
+
+function cloneRosterRows(rows) {
+    return rows.map(row => ({ ...row }));
+}
+
+function rosterRowsEqual(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function updateRosterUndoButton() {
+    const btn = document.getElementById('btn-undo-roster');
+    if (!btn) return;
+    const entry = rosterUndoStack[rosterUndoStack.length - 1];
+    btn.disabled = !entry;
+    btn.title = entry ? `${entry.label}を元に戻す` : '元に戻せる名簿操作はありません';
+}
+
+function clearRosterUndoHistory() {
+    rosterUndoStack = [];
+    rosterCellEditState = null;
+    updateRosterUndoButton();
+}
+
+function pushRosterUndoSnapshot(label, focus = null, rows = readRosterTableRows()) {
+    const snapshotRows = cloneRosterRows(rows);
+    rosterUndoStack.push({ label, rows: snapshotRows, focus });
+    if (rosterUndoStack.length > ROSTER_UNDO_LIMIT) rosterUndoStack.splice(0, rosterUndoStack.length - ROSTER_UNDO_LIMIT);
+    updateRosterUndoButton();
+}
+
+function updateRosterDeleteModeUi() {
+    const button = document.getElementById('btn-roster-delete-mode');
+    const label = rosterDeleteMode ? '行削除を無効にする' : '行削除を有効にする';
+    if (button) {
+        button.classList.toggle('is-active', rosterDeleteMode);
+        button.setAttribute('aria-pressed', String(rosterDeleteMode));
+        button.setAttribute('aria-label', label);
+        button.title = label;
+        const srLabel = button.querySelector('.sr-only');
+        if (srLabel) srLabel.textContent = label;
+    }
+    document.querySelectorAll('#students-table .btn-icon-trash').forEach(btn => {
+        btn.disabled = !rosterDeleteMode;
+    });
+}
+
+function setRosterDeleteMode(enabled) {
+    rosterDeleteMode = Boolean(enabled);
+    updateRosterDeleteModeUi();
+}
+
+function toggleRosterDeleteMode() {
+    setRosterDeleteMode(!rosterDeleteMode);
+}
+
+function restoreRosterRows(rows, focus = null) {
+    const tbody = getRosterTableBody();
+    if (!tbody) return;
+    tbody.replaceChildren();
+    rows.forEach(row => addRowToTable(row, { recordUndo: false }));
+    updateRosterDeleteModeUi();
+    if (!focus) return;
+    requestAnimationFrame(() => {
+        const targetRow = Math.min(focus.rowIndex, Math.max(0, tbody.rows.length - 1));
+        if (tbody.rows.length > 0) {
+            focusRosterEditableCell(targetRow, Math.min(focus.cellIndex, 6));
+        } else {
+            document.getElementById('btn-undo-roster')?.focus();
+        }
+    });
+}
+
+function undoRosterTableEdit() {
+    const entry = rosterUndoStack.pop();
+    if (!entry) return;
+    rosterCellEditState = null;
+    restoreRosterRows(entry.rows, entry.focus);
+    updateRosterUndoButton();
+}
+
+function deleteRosterTableRow(tr) {
+    if (!rosterDeleteMode || !tr?.isConnected) return;
+    const tbody = getRosterTableBody();
+    const rowIndex = tbody ? Array.from(tbody.rows).indexOf(tr) : -1;
+    pushRosterUndoSnapshot('行削除', { rowIndex: Math.max(0, rowIndex), cellIndex: 0 });
+    tr.remove();
+    updateRosterDeleteModeUi();
+}
+
+function onStudentsTableFocusIn(e) {
+    const td = getRosterEditableCell(e.target);
+    if (!td || rosterCellEditState?.td === td) return;
+    rosterCellEditState = {
+        td,
+        rows: readRosterTableRows(),
+        focus: getRosterCellLocation(td)
+    };
+}
+
+function onStudentsTableFocusOut(e) {
+    const td = getRosterEditableCell(e.target);
+    if (!td || rosterCellEditState?.td !== td) return;
+    const editState = rosterCellEditState;
+    rosterCellEditState = null;
+    if (!rosterRowsEqual(editState.rows, readRosterTableRows())) {
+        pushRosterUndoSnapshot('セル編集', editState.focus, editState.rows);
+    }
+}
+
 /** ソフト制約テーブル内の入力（上から・左→右）。横移動は Tab のみ・縦は上下矢印 */
 const SOFT_SCORE_INPUT_IDS = [
     'soft-front-base', 'soft-front-step',
@@ -395,13 +538,19 @@ function initFormArrowNavigation() {
     const studentsTable = document.getElementById('students-table');
     if (studentsTable) {
         studentsTable.addEventListener('keydown', onStudentsTableKeydown, true);
+        studentsTable.addEventListener('focusin', onStudentsTableFocusIn, true);
+        studentsTable.addEventListener('focusout', onStudentsTableFocusOut, true);
     }
     const historySelect = document.getElementById('history-select');
     if (historySelect) {
         historySelect.addEventListener('change', () => {
-            if (!requestHistorySelectionToBoard()) return;
+            if (!requestHistorySelectionToBoard()) {
+                updateHistorySelectTitle();
+                return;
+            }
             syncHistoryMemoInput();
             updateDeskTitleDisplay();
+            updateHistorySelectTitle();
         });
     }
     const shuffleSeedEl = getShuffleSeedInputElement();
@@ -2444,6 +2593,8 @@ function finishRosterCommitFromTable(tempStudents) {
     saveCurrentClassData();
     syncConstraintsBaselineFromPersisted();
     updateCounters();
+    clearRosterUndoHistory();
+    setRosterDeleteMode(false);
 }
 
 function switchTab(tabId, ev, navOpts) {
@@ -3423,7 +3574,9 @@ function resetPlacement() {
 }
 
 // --- 名簿管理 ---
-function addRowToTable(data = {id:'', name:'', kana:'', gender:'', attr1:'', attr2:'', flags:''}) {
+function addRowToTable(data = {id:'', name:'', kana:'', gender:'', attr1:'', attr2:'', flags:''}, options = {}) {
+    const { recordUndo = true } = options;
+    if (recordUndo) pushRosterUndoSnapshot('行追加');
     const tbody = document.querySelector('#students-table tbody'); const tr = document.createElement('tr');
     const editableCells = {};
     ['id', 'name', 'kana', 'gender', 'attr1', 'attr2', 'flags'].forEach(k => {
@@ -3445,7 +3598,8 @@ function addRowToTable(data = {id:'', name:'', kana:'', gender:'', attr1:'', att
     btn.setAttribute('aria-label', 'この行を削除');
     btn.title = '削除';
     btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
-    btn.onclick = () => tr.remove();
+    btn.disabled = !rosterDeleteMode;
+    btn.onclick = () => deleteRosterTableRow(tr);
     opTd.appendChild(btn);
     tr.appendChild(opTd);
     tbody.appendChild(tr);
@@ -3486,8 +3640,9 @@ function parseRosterTsvRows(text) {
 function applyParsedRosterRows(rows, mode) {
     const tbody = document.querySelector('#students-table tbody');
     if (!tbody) return;
+    pushRosterUndoSnapshot(mode === 'replace' ? 'TSV置換' : 'TSV追記');
     if (mode === 'replace') tbody.innerHTML = '';
-    rows.forEach(row => addRowToTable(row));
+    rows.forEach(row => addRowToTable(row, { recordUndo: false }));
     const ta = document.getElementById('import-tsv');
     if (ta) ta.value = '';
 }
@@ -7189,7 +7344,9 @@ function loadCurrentClassData() {
         resetClassScopedSettingsUI();
         applySeatLayoutToUI(null);
     }
-    document.querySelector('#students-table tbody').innerHTML = ''; currentStudents.forEach(s => addRowToTable(s));
+    clearRosterUndoHistory();
+    setRosterDeleteMode(false);
+    document.querySelector('#students-table tbody').innerHTML = ''; currentStudents.forEach(s => addRowToTable(s, { recordUndo: false }));
     updateColors(); updateHistorySelect(); updateCounters();
     updateClassNameDisplay();
     updatePrintInactiveToggleUi();
@@ -7206,6 +7363,7 @@ function updateHistorySelect() {
     if(histories.length === 0) {
         historySelect.innerHTML = '<option value="">履歴なし</option>';
         historySelect.dataset.appliedValue = '';
+        updateHistorySelectTitle();
         const memoInput = document.getElementById('history-memo-input');
         if (memoInput) memoInput.value = '';
         updateDeskTitleDisplay();
@@ -7218,13 +7376,21 @@ function updateHistorySelect() {
         const memo = (historyEntry.memo || '').trim();
         const seedLabel = historyEntry.seed == null ? '' : `seed ${historyEntry.seed}${historyEntry.manuallyModified ? '（手動変更あり）' : ''}`;
         option.text = [historyEntry.date, memo, seedLabel].filter(Boolean).join(' │ ');
+        option.title = option.text;
         historySelect.appendChild(option);
     });
     if (prevValue !== '' && histories[prevValue]) historySelect.value = prevValue;
     historySelect.dataset.appliedValue = historySelect.value;
+    updateHistorySelectTitle();
     syncHistoryMemoInput();
     syncShuffleSeedControlsFromState();
     updateDeskTitleDisplay();
+}
+
+function updateHistorySelectTitle() {
+    const historySelect = document.getElementById('history-select');
+    if (!historySelect) return;
+    historySelect.title = historySelect.selectedOptions[0]?.text || '';
 }
 
 function requestHistorySelectionToBoard() {

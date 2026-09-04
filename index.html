@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260903-ng-magnet-v1">
+<link rel="stylesheet" href="styles.css?v=20260904-roster-undo-v1">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -481,7 +481,7 @@
             <div class="history-management-block">
             <label for="history-select" class="history-management-label">過去の配置を盤面に復元</label>
             <div class="flex-row history-management-row">
-                <select id="history-select" style="flex-grow:1;"></select>
+                <select id="history-select"></select>
                 <button class="btn btn-danger" style="padding: 8px 10px;" onclick="deleteSelectedHistory()" title="選択した履歴を削除">削除</button>
             </div>
             <div class="flex-row history-extra-actions">
@@ -528,13 +528,16 @@
             <div class="panel" style="flex-grow: 1; display:flex; flex-direction:column; margin-bottom: 0;">
                 <div class="flex-row" style="justify-content: space-between; align-items: center; gap: 12px;">
                     <h2 style="width: auto; border:none; margin:0;">名簿データ (直接編集可能)</h2>
-                    <button type="button" class="btn btn-outline" style="flex-shrink: 0; white-space: nowrap; padding: 3px 12px; line-height: 1.2;" onclick="addRowToTable()">行を追加</button>
+                    <div class="roster-table-actions">
+                        <button type="button" id="btn-undo-roster" class="btn btn-outline roster-undo-button" onclick="undoRosterTableEdit()" disabled>元に戻す</button>
+                        <button type="button" class="btn btn-outline" style="flex-shrink: 0; white-space: nowrap; padding: 3px 12px; line-height: 1.2;" onclick="addRowToTable()">行を追加</button>
+                    </div>
                 </div>
                 <p style="font-size:0.78em; color:#64748b; margin:4px 0 0 0;">座席表タブへ切り替えると、全体ルール・備考欄の記法と、全体の行・列指定と備考の座席指定の論理矛盾のみを確認し、問題なければ自動で保存・反映されます。</p>
                 <div style="overflow-y: auto; flex-grow: 1; margin-top: 4px; border: 1px solid #ddd;">
                     <table class="data-table" id="students-table">
                         <thead>
-                            <tr><th>番号</th><th>氏名</th><th>かな</th><th>性別</th><th>属性1</th><th>属性2</th><th>備考</th><th class="col-actions" scope="col" aria-hidden="true"></th></tr>
+                            <tr><th>番号</th><th>氏名</th><th>かな</th><th>性別</th><th>属性1</th><th>属性2</th><th>備考</th><th class="col-actions" scope="col"><button type="button" id="btn-roster-delete-mode" class="roster-delete-mode-button" onclick="toggleRosterDeleteMode()" aria-pressed="false" aria-label="行削除を有効にする" title="行削除を有効にする"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg><span class="sr-only">行削除を有効にする</span></button></th></tr>
                         </thead>
                         <tbody></tbody>
                     </table>
@@ -709,6 +712,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260903-ng-magnet-v1"></script>
+<script src="app.js?v=20260904-roster-undo-v1"></script>
 </body>
 </html>
