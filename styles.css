@@ -934,6 +934,12 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
 }
 /* スクロールとピンチ拡大は維持し、タップの待ち時間を抑える。 */
 .seat { touch-action: manipulation; }
+.seat.seat-touch-active, .seat.seat-touch-active * { -webkit-user-drag: none; }
+.seat.seat-touch-held {
+    outline: 3px solid #1976d2;
+    outline-offset: 2px;
+    box-shadow: inset 0 0 0 3px #bbdefb !important;
+}
 
 /* HTML5 D&D 用の画面外プロキシ。盤面の反転を継承させず、氏名を常に正立で描く。 */
 .seat-drag-ghost {

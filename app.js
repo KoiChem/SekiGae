@@ -1119,8 +1119,7 @@ let deleteAllDataRestoreTarget = null;
 let sampleDeleteInfoEscListener = null;
 let sampleDeleteInfoRestoreTarget = null;
 let seatTrackTouchTimer = null;
-let seatTrackLongPressTriggered = false;
-let seatTrackTouchOrigin = null;
+let seatTouchGesture = null;
 let suppressSeatClickUntil = 0;
 let activeColorPaletteTarget = 0;
 let mainColorPaletteRestoreTarget = null;
@@ -1488,40 +1487,113 @@ function openSeatTrackModal(seatIdx) {
     modal.style.display = 'flex';
 }
 
-function handleSeatTrackTouchStart(e, seatIdx) {
+// タッチのみ独自の長押し操作を使う。マウスは既存の HTML5 D&D を維持する。
+function cancelSeatTouchGesture() {
     clearSeatTrackTouchTimer();
-    seatTrackLongPressTriggered = false;
-    seatTrackTouchOrigin = null;
+    if (!seatTouchGesture) return;
+    const { element, draggable, phase } = seatTouchGesture;
+    element.draggable = draggable;
+    element.classList.remove('seat-touch-active', 'seat-touch-held');
+    if (phase !== 'pending') suppressSeatClickUntil = Date.now() + 800;
+    clearDragOverStates();
+    seatTouchGesture = null;
+}
+
+function handleSeatTrackTouchStart(e, seatIdx) {
+    cancelSeatTouchGesture();
     if (document.body.classList.contains('print-mode') || e.touches.length !== 1) return;
     const touch = e.touches[0];
-    seatTrackTouchOrigin = { x: touch.clientX, y: touch.clientY };
+    const element = e.currentTarget;
+    seatTouchGesture = {
+        seatIdx, element, draggable: element.draggable, id: touch.identifier,
+        x: touch.clientX, y: touch.clientY, phase: 'pending'
+    };
+    // タッチ由来のネイティブドラッグが長押しを奪うのを防ぐ。終了時に戻す。
+    element.draggable = false;
+    element.classList.add('seat-touch-active');
     seatTrackTouchTimer = setTimeout(() => {
-        seatTrackLongPressTriggered = true;
-        suppressSeatClickUntil = Date.now() + 800;
-        openSeatTrackModal(seatIdx);
+        seatTrackTouchTimer = null;
+        if (!seatTouchGesture || seatTouchGesture.phase !== 'pending') return;
+        seatTouchGesture.phase = 'held';
+        element.classList.add('seat-touch-held');
     }, 550);
 }
 
+function getSeatTouchTarget(x, y) {
+    const seat = document.elementFromPoint(x, y)?.closest('.seat');
+    if (!seat || !document.getElementById('seat-grid').contains(seat)) return null;
+    return Number(seat.dataset.index);
+}
+
 function handleSeatTrackTouchMove(e) {
-    if (!seatTrackTouchOrigin) return;
-    const touch = e.touches[0];
-    if (e.touches.length !== 1 || Math.hypot(
-        touch.clientX - seatTrackTouchOrigin.x, touch.clientY - seatTrackTouchOrigin.y
-    ) > 10) {
-        clearSeatTrackTouchTimer();
-        seatTrackTouchOrigin = null;
+    const gesture = seatTouchGesture;
+    if (!gesture) return;
+    const touch = Array.from(e.touches).find(t => t.identifier === gesture.id);
+    if (e.touches.length !== 1 || !touch) {
+        cancelSeatTouchGesture();
+        return;
+    }
+    const moved = Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) > 10;
+    if (gesture.phase === 'pending') {
+        // 長押し前に動かした指は通常のスクロールに渡す。
+        if (moved) cancelSeatTouchGesture();
+        return;
+    }
+    // touch-action は途中変更では効かないため、非 passive の touchmove で抑制。
+    if (!e.cancelable) {
+        cancelSeatTouchGesture();
+        return;
+    }
+    e.preventDefault();
+    if (moved) gesture.phase = 'dragging';
+    if (gesture.phase !== 'dragging') return;
+    clearDragOverStates();
+    const target = getSeatTouchTarget(touch.clientX, touch.clientY);
+    const assignment = getCurrentAssignmentForDrag();
+    if (!document.body.classList.contains('print-mode') && !exceptionMode &&
+        !inactiveSeats.has(gesture.seatIdx) && assignment[gesture.seatIdx] &&
+        target !== null && target !== gesture.seatIdx &&
+        ((inactiveSeats.has(target) && !assignment[target]) ||
+         (!inactiveSeats.has(target) && assignment[target]))) {
+        getSeatElement(target).classList.add('drag-over');
     }
 }
 
 function handleSeatTrackTouchEnd(e) {
-    clearSeatTrackTouchTimer();
-    seatTrackTouchOrigin = null;
-    if (seatTrackLongPressTriggered) {
-        e.preventDefault();
-        e.stopPropagation();
-        seatTrackLongPressTriggered = false;
+    const gesture = seatTouchGesture;
+    if (!gesture) return;
+    const touch = Array.from(e.changedTouches).find(t => t.identifier === gesture.id);
+    if (!touch) return;
+    const { seatIdx, phase } = gesture;
+    cancelSeatTouchGesture();
+    if (phase === 'pending') return;
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+    if (e.touches.length || document.body.classList.contains('print-mode')) return;
+    // 最後の移動イベントが省かれた場合も、大きく移動した指で履歴を開かない。
+    const moved = Math.hypot(touch.clientX - gesture.x, touch.clientY - gesture.y) > 10;
+    if (phase === 'held' && !moved) {
+        openSeatTrackModal(seatIdx);
+    } else {
+        const target = getSeatTouchTarget(touch.clientX, touch.clientY);
+        if (target !== null) requestSeatDrop(seatIdx, target);
     }
 }
+
+function handleSeatContextMenu(e, seatIdx) {
+    e.preventDefault();
+    if (seatTouchGesture || e.sourceCapabilities?.firesTouchEvents || e.pointerType === 'touch') return;
+    openSeatTrackModal(seatIdx);
+}
+
+// 2本目が座席外に触れた場合や、アプリ切替による中断でも後始末する。
+document.addEventListener('touchstart', e => {
+    if (e.touches.length > 1) cancelSeatTouchGesture();
+}, { capture: true, passive: true });
+window.addEventListener('blur', cancelSeatTouchGesture);
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) cancelSeatTouchGesture();
+});
 
 
 function setActionButtons(commitVisible, logVisible) {
@@ -2769,17 +2841,18 @@ function deleteCurrentClass() {
 
 // --- グリッド初期化 ---
 function initGrid() {
+    cancelSeatTouchGesture();
     const grid = document.getElementById('seat-grid'); grid.innerHTML = '';
     for (let i = 0; i < TOTAL_SEATS; i++) {
         const seat = document.createElement('div');
         seat.className = 'seat'; seat.dataset.index = i; seat.onclick = () => handleSeatClick(i);
         seat.draggable = true; seat.ondragstart = (e) => dragStart(e, i); seat.ondragover = (e) => dragOver(e);
         seat.ondragleave = (e) => dragLeave(e, i); seat.ondragend = () => dragEnd(); seat.ondrop = (e) => drop(e, i);
-        seat.oncontextmenu = (e) => { e.preventDefault(); openSeatTrackModal(i); };
+        seat.oncontextmenu = (e) => handleSeatContextMenu(e, i);
         seat.addEventListener('touchstart', (e) => handleSeatTrackTouchStart(e, i), { passive: true });
         seat.addEventListener('touchend', handleSeatTrackTouchEnd, { passive: false });
-        seat.addEventListener('touchcancel', () => { clearSeatTrackTouchTimer(); seatTrackTouchOrigin = null; seatTrackLongPressTriggered = false; }, { passive: true });
-        seat.addEventListener('touchmove', handleSeatTrackTouchMove, { passive: true });
+        seat.addEventListener('touchcancel', cancelSeatTouchGesture, { passive: true });
+        seat.addEventListener('touchmove', handleSeatTrackTouchMove, { passive: false });
 
         const label = document.createElement('div'); label.className = 'seat-label'; label.innerText = getSeatLabel(i);
         const content = document.createElement('div'); content.className = 'seat-content'; content.id = `seat-content-${i}`;
@@ -7152,8 +7225,7 @@ function undoLastManualSwap() {
 }
 
 function dragStart(e, i) {
-    clearSeatTrackTouchTimer();
-    seatTrackTouchOrigin = null;
+    if (seatTouchGesture) { e.preventDefault(); return; }
     clearSeatDragGhost();
     if (document.body.classList.contains('print-mode') || exceptionMode || inactiveSeats.has(i)) {
         e.preventDefault();
@@ -7244,6 +7316,12 @@ function drop(e, targetIdx) {
     const fromIdx = draggedIdx;
     draggedIdx = null;
     clearDragOverStates();
+    requestSeatDrop(fromIdx, targetIdx);
+}
+
+// マウスとタッチで、条件評価・確認・Undo の経路を共用する。
+function requestSeatDrop(fromIdx, targetIdx) {
+    if (document.body.classList.contains('print-mode') || exceptionMode) return;
     if (fromIdx === null || fromIdx === targetIdx || inactiveSeats.has(fromIdx)) return;
 
     const assignment = getCurrentAssignmentForDrag();
