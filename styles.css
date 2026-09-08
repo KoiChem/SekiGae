@@ -926,6 +926,15 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
     cursor: pointer; display: flex; flex-direction: column; justify-content: center; padding: 5px;
     position: relative; overflow: hidden; transition: 0.2s; user-select: none;
 }
+/* Safari の文字選択・長押しメニューが座席操作と競合しないよう、子要素にも適用。 */
+.seat, .seat * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+/* スクロールとピンチ拡大は維持し、タップの待ち時間を抑える。 */
+.seat { touch-action: manipulation; }
+
 /* HTML5 D&D 用の画面外プロキシ。盤面の反転を継承させず、氏名を常に正立で描く。 */
 .seat-drag-ghost {
     position: fixed;

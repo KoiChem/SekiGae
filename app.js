@@ -1120,6 +1120,7 @@ let sampleDeleteInfoEscListener = null;
 let sampleDeleteInfoRestoreTarget = null;
 let seatTrackTouchTimer = null;
 let seatTrackLongPressTriggered = false;
+let seatTrackTouchOrigin = null;
 let suppressSeatClickUntil = 0;
 let activeColorPaletteTarget = 0;
 let mainColorPaletteRestoreTarget = null;
@@ -1488,9 +1489,12 @@ function openSeatTrackModal(seatIdx) {
 }
 
 function handleSeatTrackTouchStart(e, seatIdx) {
-    if (document.body.classList.contains('print-mode')) return;
     clearSeatTrackTouchTimer();
     seatTrackLongPressTriggered = false;
+    seatTrackTouchOrigin = null;
+    if (document.body.classList.contains('print-mode') || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    seatTrackTouchOrigin = { x: touch.clientX, y: touch.clientY };
     seatTrackTouchTimer = setTimeout(() => {
         seatTrackLongPressTriggered = true;
         suppressSeatClickUntil = Date.now() + 800;
@@ -1498,8 +1502,20 @@ function handleSeatTrackTouchStart(e, seatIdx) {
     }, 550);
 }
 
+function handleSeatTrackTouchMove(e) {
+    if (!seatTrackTouchOrigin) return;
+    const touch = e.touches[0];
+    if (e.touches.length !== 1 || Math.hypot(
+        touch.clientX - seatTrackTouchOrigin.x, touch.clientY - seatTrackTouchOrigin.y
+    ) > 10) {
+        clearSeatTrackTouchTimer();
+        seatTrackTouchOrigin = null;
+    }
+}
+
 function handleSeatTrackTouchEnd(e) {
     clearSeatTrackTouchTimer();
+    seatTrackTouchOrigin = null;
     if (seatTrackLongPressTriggered) {
         e.preventDefault();
         e.stopPropagation();
@@ -2762,8 +2778,8 @@ function initGrid() {
         seat.oncontextmenu = (e) => { e.preventDefault(); openSeatTrackModal(i); };
         seat.addEventListener('touchstart', (e) => handleSeatTrackTouchStart(e, i), { passive: true });
         seat.addEventListener('touchend', handleSeatTrackTouchEnd, { passive: false });
-        seat.addEventListener('touchcancel', () => { clearSeatTrackTouchTimer(); seatTrackLongPressTriggered = false; }, { passive: true });
-        seat.addEventListener('touchmove', () => { clearSeatTrackTouchTimer(); seatTrackLongPressTriggered = false; }, { passive: true });
+        seat.addEventListener('touchcancel', () => { clearSeatTrackTouchTimer(); seatTrackTouchOrigin = null; seatTrackLongPressTriggered = false; }, { passive: true });
+        seat.addEventListener('touchmove', handleSeatTrackTouchMove, { passive: true });
 
         const label = document.createElement('div'); label.className = 'seat-label'; label.innerText = getSeatLabel(i);
         const content = document.createElement('div'); content.className = 'seat-content'; content.id = `seat-content-${i}`;
@@ -7136,6 +7152,8 @@ function undoLastManualSwap() {
 }
 
 function dragStart(e, i) {
+    clearSeatTrackTouchTimer();
+    seatTrackTouchOrigin = null;
     clearSeatDragGhost();
     if (document.body.classList.contains('print-mode') || exceptionMode || inactiveSeats.has(i)) {
         e.preventDefault();
