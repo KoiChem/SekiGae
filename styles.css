@@ -1201,7 +1201,7 @@ body.ui-layout-landscape .main-color-token { width: 100%; }
 .main-color-palette-footer .color-palette-other { min-height: 34px; padding: 3px 8px; font-size: 0.75em; line-height: 1.2; }
 .main-gender-settings { display: grid; gap: 4px; padding: 6px; border: 1px solid #dbe3ec; border-radius: 6px; background: #f8fafc; font-size: 0.85em; }
 .main-gender-title { color: #334155; font-weight: bold; }
-.main-gender-controls { display: grid; grid-template-columns: auto auto auto minmax(76px, 1fr); align-items: center; gap: 4px; min-width: 0; }
+.main-gender-controls { display: grid; grid-template-columns: auto auto auto minmax(70px, 1fr) auto; align-items: center; gap: 4px; min-width: 0; }
 .main-gender-controls label { display: inline-flex; min-width: 0; min-height: 34px; align-items: center; gap: 2px; color: #334155; font-weight: bold; white-space: nowrap; }
 .main-gender-controls .btn { width: 29.5px; min-width: 29.5px; min-height: 28.9px; height: 28.9px; padding: 2.55px 4px; font-size: 0.82em; font-weight: bold; }
 .main-gender-controls select { min-width: 0; min-height: 32px; max-width: 100%; font: inherit; font-weight: bold; }
@@ -1209,6 +1209,10 @@ body.ui-layout-landscape .main-color-token { width: 100%; }
 .main-gender-color-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .main-gender-color-select option { background: #fff; color: #1f2937; }
 .main-gender-style select { width: 100%; }
+.main-gender-fill { gap: 3px !important; }
+.main-gender-controls .btn:disabled, .print-gender-toggle:disabled { opacity: 0.42; cursor: not-allowed; }
+body.ui-layout-landscape .main-gender-controls { grid-template-columns: auto auto auto minmax(54px, 1fr) auto; gap: 2px; }
+body.ui-layout-landscape .main-gender-fill { gap: 2px !important; }
 .color-palette-chip {
     width: 20px;
     height: 20px;
@@ -1451,7 +1455,7 @@ body.print-mode.print-settings-closed #print-preview-stage {
 .print-color-palette-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .print-color-palette-footer output { font: 0.78rem ui-monospace, SFMono-Regular, Menlo, monospace; color: #475569; }
 .print-gender-settings { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; padding: 5px 6px; border: 1px solid #dbe3ec; border-radius: 6px; background: #f8fafc; }
-.print-gender-controls { display: grid; grid-template-columns: auto auto minmax(82px, 1fr); align-items: center; gap: 5px; min-width: 0; }
+.print-gender-controls { display: grid; grid-template-columns: auto auto minmax(76px, 1fr) auto; align-items: center; gap: 5px; min-width: 0; }
 .print-gender-settings label, .print-gender-active { display: inline-flex; min-width: 0; min-height: 34px; align-items: center; justify-content: center; gap: 4px; font-size: 0.75rem; font-weight: bold; color: #334155; white-space: nowrap; }
 .print-gender-active { justify-content: flex-start !important; }
 .print-gender-toggle { width: 29.5px; min-width: 29.5px; min-height: 28.9px; height: 28.9px; padding: 2.55px 4px; font-size: 0.75rem; font-weight: bold; }
@@ -1470,7 +1474,7 @@ body.print-mode.print-settings-docked .print-settings-grid { gap: 7px; }
 @media (orientation: portrait) {
     .print-color-controls, .print-gender-settings { grid-template-columns: minmax(0, 1fr); gap: 3px; }
     .print-color-token-list { gap: 3px; }
-    .print-gender-controls { grid-template-columns: auto auto minmax(72px, 1fr); gap: 3px; }
+    .print-gender-controls { grid-template-columns: auto auto minmax(68px, 1fr) auto; gap: 3px; }
 }
 @media (orientation: portrait) and (min-width: 740px) {
     body.print-mode.print-settings-docked .print-settings-grid { grid-template-columns: minmax(0, 2.1fr) minmax(200px, 0.9fr); }

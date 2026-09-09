@@ -1647,7 +1647,7 @@ async function loadSampleBackup() {
             try {
                 const classData = JSON.parse(sampleValue);
                 classData.colors = Object.fromEntries(DEFAULT_SEAT_COLORS.map((color, index) => [`c${index + 1}`, color]));
-                classData.genderBorderData = { active: false, boy: '3', girl: '6', style: 'solid' };
+                classData.genderBorderData = { active: false, boy: '3', girl: '6', style: 'solid', fill: false };
                 sampleValue = JSON.stringify(classData);
             } catch (error) {
                 console.warn('サンプル表示設定の更新をスキップしました。', error);
@@ -1839,7 +1839,8 @@ function normalizeGenderBorderData(value) {
         active: !!(value && value.active),
         boy: clamp(value && value.boy, 6),
         girl: clamp(value && value.girl, 5),
-        style: value && ['solid', 'thick', 'double'].includes(value.style) ? value.style : 'solid'
+        style: value && ['solid', 'thick', 'double'].includes(value.style) ? value.style : 'solid',
+        fill: !!(value && value.fill)
     };
 }
 
@@ -1848,7 +1849,8 @@ function readGenderBorderDataFromMainUi() {
         active: document.getElementById('btn-gender-border')?.classList.contains('btn-success'),
         boy: document.getElementById('gb-boy-color')?.value,
         girl: document.getElementById('gb-girl-color')?.value,
-        style: document.getElementById('gb-style')?.value
+        style: document.getElementById('gb-style')?.value,
+        fill: document.getElementById('btn-gender-fill')?.classList.contains('btn-success')
     });
 }
 
@@ -1858,6 +1860,7 @@ function writeGenderBorderDataToMainUi(value) {
     const girl = document.getElementById('gb-girl-color');
     const style = document.getElementById('gb-style');
     const btn = document.getElementById('btn-gender-border');
+    const fillBtn = document.getElementById('btn-gender-fill');
     const panel = document.getElementById('gender-border-settings');
     if (boy) boy.value = data.boy;
     if (girl) girl.value = data.girl;
@@ -1865,6 +1868,11 @@ function writeGenderBorderDataToMainUi(value) {
     applyColorControlSurface(boy, getColorInput(Number(data.boy))?.value || DEFAULT_SEAT_COLORS[5]);
     applyColorControlSurface(girl, getColorInput(Number(data.girl))?.value || DEFAULT_SEAT_COLORS[4]);
     updateGenderBorderToggleButton(btn, data.active);
+    updateGenderBorderToggleButton(fillBtn, data.fill);
+    if (fillBtn) {
+        fillBtn.disabled = !data.active;
+        fillBtn.setAttribute('aria-disabled', String(!data.active));
+    }
     // 現行UIではOFFでも設定欄を常時表示する。旧UI由来のインライン非表示だけを解除する。
     if (panel) panel.style.removeProperty('display');
 }
@@ -3058,33 +3066,52 @@ function togglePrintMode() {
 }
 
 function getRenderConfig() {
-    const gender = readGenderBorderDataFromMainUi();
+    const appearance = readSeatAppearanceSettingsFromMainUi();
+    const gender = appearance.genderBorderData;
     return {
-        seatLayoutFields: normalizeSeatLayoutFields(collectSeatLayoutFromUI()),
+        seatLayoutFields: appearance.seatLayoutFields,
         currentData: previewAssignment || seatAssignment,
         isGbActive: gender.active,
         gbBoy: gender.boy,
         gbGirl: gender.girl,
-        gbStyleVal: gender.style
+        gbStyleVal: gender.style,
+        gbFill: gender.fill,
+        colors: appearance.colors
     };
+}
+
+function mixHexWithWhite(color, colorRatio = 0.08) {
+    const hex = normalizeColorHex(color, '#FFFFFF');
+    const ratio = Math.min(1, Math.max(0, Number(colorRatio) || 0));
+    const mixed = [1, 3, 5].map(index => {
+        const channel = parseInt(hex.slice(index, index + 2), 16);
+        return Math.round(channel * ratio + 255 * (1 - ratio)).toString(16).padStart(2, '0');
+    });
+    return `#${mixed.join('')}`.toUpperCase();
 }
 
 function getGenderBorderStyle(student, cfg, forPrint) {
     if (!cfg.isGbActive || !student || !student.gender) return null;
-    const borderColor = student.gender === '男' ? `var(--c${cfg.gbBoy})` : student.gender === '女' ? `var(--c${cfg.gbGirl})` : '';
+    const colorNumber = student.gender === '男' ? cfg.gbBoy : student.gender === '女' ? cfg.gbGirl : '';
+    const borderColor = colorNumber ? `var(--c${colorNumber})` : '';
     if (!borderColor) return null;
 
+    const style = {};
+    if (cfg.gbFill) style.backgroundColor = mixHexWithWhite(cfg.colors?.[`c${colorNumber}`], 0.08);
+
     if (forPrint) {
-        if (cfg.gbStyleVal === 'double') return { border: `3px double ${borderColor}` };
-        if (cfg.gbStyleVal === 'thick') return { border: `2px solid ${borderColor}` };
-        return { border: `1.2px solid ${borderColor}` };
+        if (cfg.gbStyleVal === 'double') style.border = `3px double ${borderColor}`;
+        else if (cfg.gbStyleVal === 'thick') style.border = `2px solid ${borderColor}`;
+        else style.border = `1.2px solid ${borderColor}`;
+        return style;
     }
 
     let gbBorderWidth = '2px';
     let gbBorderStyle = 'solid';
     if (cfg.gbStyleVal === 'thick') gbBorderWidth = '4px';
     if (cfg.gbStyleVal === 'double') { gbBorderWidth = '4px'; gbBorderStyle = 'double'; }
-    return { border: `${gbBorderWidth} ${gbBorderStyle} ${borderColor}` };
+    style.border = `${gbBorderWidth} ${gbBorderStyle} ${borderColor}`;
+    return style;
 }
 
 function buildSeatContentHtml(student, cfg, forPrint = false) {
@@ -3144,6 +3171,7 @@ function renderPrintLayout() {
         if (student) {
             const borderStyle = getGenderBorderStyle(student, cfg, true);
             if (borderStyle && borderStyle.border) seatEl.style.border = borderStyle.border;
+            if (borderStyle && borderStyle.backgroundColor) seatEl.style.backgroundColor = borderStyle.backgroundColor;
             seatEl.innerHTML = `<div class="print-seat-content">${buildSeatContentHtml(student, cfg, true)}</div>`;
         } else {
             seatEl.innerHTML = `<div class="print-seat-label">${getSeatLabel(i)}</div>`;
@@ -3329,6 +3357,15 @@ function toggleGenderBorder() {
     saveAndRender();
 }
 
+function toggleGenderFill() {
+    const data = readGenderBorderDataFromMainUi();
+    if (!data.active) return;
+    data.fill = !data.fill;
+    writeGenderBorderDataToMainUi(data);
+    syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
+    saveAndRender();
+}
+
 function saveAndRender() {
     writeSeatAppearanceSettingsToMainUi(readSeatAppearanceSettingsFromMainUi());
     saveCurrentClassData();
@@ -3466,7 +3503,7 @@ function initPrintSettingsPanel() {
     ].map(keys => keys.map(key => SEAT_LAYOUT_FIXED_META.find(meta => meta.key === key)).filter(Boolean));
     layout.innerHTML = `<div class="print-layout-groups">${fixedGroups.map(metas => `<div class="print-layout-group">${createPrintLayoutTable(metas)}</div>`).join('')}</div>`;
     colors.innerHTML = createPrintColorControls();
-    gender.innerHTML = `<div class="print-gender-settings"><div class="print-gender-active"><span>男女枠線</span><button id="ps-gb-active" class="btn btn-outline print-gender-toggle" type="button" aria-pressed="false">OFF</button></div><div class="print-gender-controls"><label class="print-gender-field"><span>男</span><span class="print-gender-select"><select id="ps-gb-boy" data-gender-property="boy" aria-label="男子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field"><span>女</span><span class="print-gender-select"><select id="ps-gb-girl" data-gender-property="girl" aria-label="女子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field print-gender-style"><span>線</span><select id="ps-gb-style" data-gender-property="style" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label></div></div>`;
+    gender.innerHTML = `<div class="print-gender-settings"><div class="print-gender-active"><span>男女枠線</span><button id="ps-gb-active" class="btn btn-outline print-gender-toggle" type="button" aria-pressed="false">OFF</button></div><div class="print-gender-controls"><label class="print-gender-field"><span>男</span><span class="print-gender-select"><select id="ps-gb-boy" data-gender-property="boy" aria-label="男子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field"><span>女</span><span class="print-gender-select"><select id="ps-gb-girl" data-gender-property="girl" aria-label="女子の枠線色">${[1,2,3,4,5,6].map(n => `<option value="${n}">${n}</option>`).join('')}</select></span></label><label class="print-gender-field print-gender-style"><span>線</span><select id="ps-gb-style" data-gender-property="style" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label><label class="print-gender-field print-gender-fill"><span>塗り</span><button id="ps-gb-fill" class="btn btn-outline print-gender-toggle" type="button" aria-pressed="false" disabled>OFF</button></label></div></div>`;
     layout.querySelectorAll('[data-layout-property]').forEach(control => control.addEventListener('change', () => {
         const value = control.dataset.layoutProperty === 'print' ? control.checked : control.value;
         setPrintLayoutField(control.dataset.layoutKey, control.dataset.layoutProperty, value);
@@ -3477,6 +3514,10 @@ function initPrintSettingsPanel() {
     gender.querySelector('#ps-gb-active')?.addEventListener('click', () => {
         const active = readSeatAppearanceSettingsFromMainUi().genderBorderData.active;
         setPrintGenderBorder('active', !active);
+    });
+    gender.querySelector('#ps-gb-fill')?.addEventListener('click', () => {
+        const gb = readSeatAppearanceSettingsFromMainUi().genderBorderData;
+        if (gb.active) setPrintGenderBorder('fill', !gb.fill);
     });
     const colorControls = document.getElementById('ps-color-controls');
     colorControls?.addEventListener('click', event => {
@@ -3538,6 +3579,7 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
     const boy = document.getElementById('ps-gb-boy');
     const girl = document.getElementById('ps-gb-girl');
     const style = document.getElementById('ps-gb-style');
+    const fill = document.getElementById('ps-gb-fill');
     updateGenderBorderToggleButton(active, gb.active);
     if (boy) {
         boy.value = gb.boy;
@@ -3548,6 +3590,11 @@ function syncPrintSettingsPanel(value = readSeatAppearanceSettingsFromMainUi()) 
         applyColorControlSurface(girl, settings.colors[`c${gb.girl}`]);
     }
     if (style) style.value = gb.style;
+    updateGenderBorderToggleButton(fill, gb.fill);
+    if (fill) {
+        fill.disabled = !gb.active;
+        fill.setAttribute('aria-disabled', String(!gb.active));
+    }
 }
 
 function refreshPrintColorControls() {
@@ -3563,6 +3610,7 @@ function setPrintLayoutField(key, property, rawValue) {
 }
 
 function setPrintGenderBorder(property, rawValue) {
+    if (property === 'fill' && !readSeatAppearanceSettingsFromMainUi().genderBorderData.active) return;
     commitPrintSettingsMutation(settings => { settings.genderBorderData[property] = rawValue; });
 }
 
@@ -6088,7 +6136,7 @@ function renderAssignments() {
         const labelEl = seatEl.querySelector('.seat-label');
         
         if(!contentEl || !labelEl) continue;
-        contentEl.innerHTML = ''; seatEl.style.border = ''; seatEl.style.boxShadow = ''; seatEl.style.outline = ''; seatEl.style.outlineOffset = ''; // inlineスタイルリセット
+        contentEl.innerHTML = ''; seatEl.style.border = ''; seatEl.style.backgroundColor = ''; seatEl.style.boxShadow = ''; seatEl.style.outline = ''; seatEl.style.outlineOffset = ''; // inlineスタイルリセット
         
         if (previewAssignment) seatEl.classList.add('uncommitted'); else seatEl.classList.remove('uncommitted');
         seatEl.classList.remove('has-adjustment-points');
@@ -6127,6 +6175,7 @@ function renderAssignments() {
             }
             const borderStyle = getGenderBorderStyle(student, cfg, false);
             if (borderStyle && borderStyle.border) seatEl.style.border = borderStyle.border;
+            if (borderStyle && borderStyle.backgroundColor) seatEl.style.backgroundColor = borderStyle.backgroundColor;
 
             labelEl.style.display = 'none';
             contentEl.innerHTML = buildSeatContentHtml(student, cfg, false);
