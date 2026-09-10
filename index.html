@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260910-gender-fill-v1">
+<link rel="stylesheet" href="styles.css?v=20260910-color-layout-v1">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -321,12 +321,12 @@
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-settings-toggle" aria-expanded="false" aria-pressed="false" aria-controls="print-settings-panel" onclick="togglePrintSettingsPanel()">色設定</button>
         <button type="button" class="btn btn-outline print-toolbar-btn" id="btn-print-inactive-toggle" onclick="togglePrintInactiveDisplay()">空席: 非表示</button>
     </div>
-    <div class="print-preview-help sr-only">用紙の向き・視点・印刷設定を確認後、「印刷・PDF」を押してください</div>
+    <div class="print-preview-help sr-only">用紙の向き・視点・色設定を確認後、「印刷・PDF」を押してください</div>
 </div>
 <div id="print-preview-stage">
-    <aside id="print-settings-panel" class="no-print" hidden aria-label="印刷設定">
+    <aside id="print-settings-panel" class="no-print" hidden aria-label="色設定">
         <div class="print-settings-panel-head">
-            <h2>印刷設定</h2>
+            <h2>色設定</h2>
         </div>
         <div class="print-settings-grid">
             <div id="ps-panel-layout" class="print-settings-section"></div>
@@ -445,13 +445,16 @@
             </div>
             <hr style="border:none; border-top:1px dashed #ccc; margin: 15px 0 10px 0;">
             <div id="gender-border-settings" class="main-gender-settings">
-                <div class="main-gender-title">男女別枠線</div>
-                <div class="main-gender-controls">
+                <div class="main-gender-title-row">
+                    <div class="main-gender-title">色分け</div>
                     <button id="btn-gender-border" class="btn btn-outline" type="button" onclick="toggleGenderBorder()" aria-pressed="false">OFF</button>
+                    <span class="main-gender-fill-label">塗り</span>
+                    <button id="btn-gender-fill" class="btn btn-outline" type="button" onclick="toggleGenderFill()" aria-pressed="false" disabled>OFF</button>
+                </div>
+                <div class="main-gender-controls">
                     <label>男<select id="gb-boy-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="男子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6" selected>6</option></select></label>
                     <label>女<select id="gb-girl-color" class="main-gender-color-select" onchange="saveAndRender()" aria-label="女子の枠線色"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5</option><option value="6">6</option></select></label>
-                    <label class="main-gender-style">線<select id="gb-style" onchange="saveAndRender()" aria-label="男女枠線の線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label>
-                    <label class="main-gender-fill">塗り<button id="btn-gender-fill" class="btn btn-outline" type="button" onclick="toggleGenderFill()" aria-pressed="false" disabled>OFF</button></label>
+                    <label class="main-gender-style">線<select id="gb-style" onchange="saveAndRender()" aria-label="色分けの線種"><option value="solid">通常</option><option value="thick">太線</option><option value="double">二重線</option></select></label>
                 </div>
             </div>
 
@@ -713,6 +716,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260910-gender-fill-v1"></script>
+<script src="app.js?v=20260910-color-layout-v1"></script>
 </body>
 </html>
