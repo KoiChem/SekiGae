@@ -195,6 +195,7 @@ const SEAT_FIT_EPS_PX = 0.25;
 /** 行の line-height（CSSと一致させる） */
 const SEAT_ROW_LINE_HEIGHT = 1.05;
 const LANDSCAPE_SCREEN_SEAT_ROW_LINE_HEIGHT = 1;
+const PORTRAIT_PRINT_SEAT_ROW_LINE_HEIGHT = 1.15;
 /** bold のはみ出し・サブピクセル丸めを吸収する横方向の安全マージン（px） */
 const SEAT_FIT_SAFETY_PX = 1.5;
 /** 氏名の基準フォントを決める参照文字列（全角5文字） */
@@ -3243,13 +3244,18 @@ function fitPrintGridLayout(grid, rows, cols) {
     const availableH = Math.max(50, classroomRect.height - deskRect.height - (parseFloat(classStyle.paddingTop) || 0) - (parseFloat(classStyle.paddingBottom) || 0) - gapY);
 
     if (printOrientation === 'portrait') {
-        // A4縦は6列を基準に机を4:3で固定する。幅だけでなく、教卓・余白を
+        // A4縦は6列を基準に座席を幅:高さ=10:9とし、枠内の上下余白と
+        // 読みやすい行間に縦方向の余裕を配分する。幅だけでなく、教卓・余白を
         // 除いた高さも上限にするため、下側が印刷領域からはみ出さない。
         const fixedCols = NUM_COLS;
+        const portraitSeatHeightRatio = 0.9;
+        const classroomGap = parseFloat(classStyle.rowGap);
+        const deskGap = Number.isFinite(classroomGap) ? classroomGap : gapY;
         const maxCellWByWidth = (availableW - (fixedCols - 1) * gapX) / fixedCols;
-        const maxCellHByHeight = (availableH - (rows - 1) * gapY) / rows;
-        const cellW = Math.max(1, Math.min(maxCellWByWidth, maxCellHByHeight / 0.75));
-        const cellH = cellW * 0.75;
+        const portraitAvailableH = availableH + gapY - deskGap;
+        const maxCellHByHeight = (portraitAvailableH - (rows - 1) * gapY) / rows;
+        const cellW = Math.max(1, Math.min(maxCellWByWidth, maxCellHByHeight / portraitSeatHeightRatio));
+        const cellH = cellW * portraitSeatHeightRatio;
         grid.style.width = `${cols * cellW + (cols - 1) * gapX}px`;
         grid.style.height = `${rows * cellH + (rows - 1) * gapY}px`;
         return;
@@ -3291,8 +3297,11 @@ function fitAllPrintSeatsSync() {
     const rowSizes = sampleRowSizesByKey('#print-root .print-seat-content');
     const sample = document.querySelector('#print-root .print-seat-content');
     const fontFamily = sample ? getComputedStyle(sample).fontFamily : null;
+    const lineHeight = printOrientation === 'portrait'
+        ? PORTRAIT_PRINT_SEAT_ROW_LINE_HEIGHT
+        : SEAT_ROW_LINE_HEIGHT;
     document.querySelectorAll('.print-seat-content').forEach(el => {
-        fitFixedSeatRows(el, nRef, rowSizes, fontFamily);
+        fitFixedSeatRows(el, nRef, rowSizes, fontFamily, 1, lineHeight);
         el.classList.add('is-fitted');
     });
 }

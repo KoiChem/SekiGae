@@ -1500,6 +1500,9 @@ body.print-orientation-portrait {
     --print-page-width: 190mm;
     --print-page-height: 277mm;
 }
+body.print-orientation-portrait .print-classroom {
+    gap: 4.5mm;
+}
 .print-classroom {
     width: 100%;
     height: 100%;
@@ -1564,6 +1567,13 @@ body.print-orientation-portrait {
 body.print-orientation-portrait .print-seat-grid {
     margin-left: 0;
     margin-right: 0;
+}
+body.print-orientation-portrait .print-seat-content {
+    padding: 1.5mm 0;
+    box-sizing: border-box;
+}
+body.print-orientation-portrait .print-seat-content .seat-fixed-text {
+    line-height: 1.15;
 }
 .print-seat {
     border: 1px solid var(--seat-border);
