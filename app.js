@@ -46,39 +46,42 @@ function coerceStoredShuffleSeed(raw) {
 
 /** 履歴に保存する合計ポイント。旧データや不正値は未記録として扱う。 */
 function coerceStoredTotalScore(raw) {
+    if (raw == null || raw === '') return null;
     const value = Number(raw);
     return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-/** 確定前を含む、再現用seedの実行履歴は今回〜3回前まで保持する。 */
-const RECENT_SHUFFLE_RUN_LIMIT = 4;
+/** シャッフル候補は確定済み履歴と分離し、配置そのものを最新10件保持する。 */
+const SHUFFLE_CANDIDATE_LIMIT = 10;
 
-function coerceRecentShuffleRun(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    const seed = coerceStoredShuffleSeed(raw.seed);
-    if (seed == null) return null;
+function normalizeShuffleCandidate(raw) {
+    if (!raw || typeof raw.contextKey !== 'string' || !Array.isArray(raw.assignment)
+        || raw.assignment.length !== TOTAL_SEATS || !Array.isArray(raw.inactiveSeats)) return null;
+    const ids = new Set();
+    for (const student of raw.assignment) {
+        if (student === null) continue;
+        if (!student || typeof student.id !== 'string' || !student.id || ids.has(student.id)) return null;
+        ids.add(student.id);
+    }
+    if (raw.inactiveSeats.some(i => !Number.isInteger(i) || i < 0 || i >= TOTAL_SEATS || raw.assignment[i])) return null;
     return {
-        seed,
-        totalScore: coerceStoredTotalScore(raw.totalScore),
-        seedSource: raw.seedSource === 'specified' || raw.seedSource === 'automatic' ? raw.seedSource : undefined,
+        assignment: JSON.parse(JSON.stringify(raw.assignment)),
+        inactiveSeats: [...new Set(raw.inactiveSeats)],
+        contextKey: raw.contextKey,
+        seed: coerceStoredShuffleSeed(raw.seed),
+        seedSource: raw.seedSource === 'specified' ? 'specified' : 'automatic',
         algorithmVersion: typeof raw.algorithmVersion === 'string' ? raw.algorithmVersion : undefined,
+        isCheckerboard: raw.isCheckerboard === true,
+        checkerboardOffset: raw.checkerboardOffset === 1 ? 1 : 0,
+        exceptions: Array.isArray(raw.exceptions) ? raw.exceptions.filter(i => Number.isInteger(i) && i >= 0 && i < TOTAL_SEATS) : [],
         manuallyModified: raw.manuallyModified === true,
-        confirmed: raw.confirmed === true
+        confirmed: raw.confirmed === true,
+        totalScore: coerceStoredTotalScore(raw.totalScore)
     };
 }
 
-/** 旧データは確定済み座席履歴からseed表示用の履歴を一度だけ補完する。 */
-function loadRecentShuffleRuns(raw, legacyHistories, legacyLastUsedSeed) {
-    if (Array.isArray(raw)) {
-        return raw.map(coerceRecentShuffleRun).filter(Boolean).slice(0, RECENT_SHUFFLE_RUN_LIMIT);
-    }
-    const migrated = (legacyHistories || [])
-        .map(h => coerceRecentShuffleRun(h))
-        .filter(Boolean)
-        .slice(0, RECENT_SHUFFLE_RUN_LIMIT);
-    if (migrated.length > 0) return migrated;
-    const legacySeed = coerceStoredShuffleSeed(legacyLastUsedSeed);
-    return legacySeed == null ? [] : [{ seed: legacySeed, totalScore: null }];
+function loadShuffleCandidates(raw) {
+    return Array.isArray(raw) ? raw.map(normalizeShuffleCandidate).filter(Boolean).slice(0, SHUFFLE_CANDIDATE_LIMIT) : [];
 }
 
 /** 自動seedは暗号学的乱数を優先し、非対応環境では時刻由来の値へ退避する。 */
@@ -552,12 +555,6 @@ function initFormArrowNavigation() {
             syncHistoryMemoInput();
             updateDeskTitleDisplay();
             updateHistorySelectTitle();
-        });
-    }
-    const shuffleSeedEl = getShuffleSeedInputElement();
-    if (shuffleSeedEl) {
-        shuffleSeedEl.addEventListener('input', () => {
-            shuffleSeedInput = String(shuffleSeedEl.value || '').trim();
         });
     }
     const importFile = document.getElementById('import-file');
@@ -1091,11 +1088,11 @@ let edgeMax = DEFAULT_EDGE_MAX;
 let inactiveSeatBackup = new Map();
 let exceptionMode = false, requiredExceptions = 0, targetExceptionGender = '', currentExceptions = new Set(), pendingStudents = null;
 let lastShuffleLog = null;
-/** 入力欄は任意指定、lastUsed は直近の実行seed。 */
-let shuffleSeedInput = '';
+/** seedは開発時の検証用メタデータのみ。通常操作では毎回自動生成する。 */
 let lastUsedShuffleSeed = null;
-/** 座席の確定有無にかかわらず保持する、最新4回のseed実行履歴。 */
-let recentShuffleRuns = [];
+/** クラスごとの候補一覧。-1は候補をプレビューしていない状態。 */
+let shuffleCandidates = [];
+let shuffleCandidateIndex = -1;
 let lastBackupAt = '';
 /** 実行中のseed情報と、プレビューを確定したとき履歴へ渡す情報。 */
 let activeShuffleRun = null;
@@ -1133,70 +1130,103 @@ let printDocumentTitleBackup = null;
 
 const SEAT_LAYOUT_FONT_LABELS = { gothic: 'ゴシック', mincho: '明朝', maru: '丸ゴ', kyokasho: '教科書' };
 
-function getShuffleSeedInputElement() {
-    return document.getElementById('shuffle-seed-input');
-}
-
-function addRecentShuffleRun(run) {
-    const entry = coerceRecentShuffleRun(run);
-    if (!entry) return;
-    recentShuffleRuns.unshift(entry);
-    recentShuffleRuns = recentShuffleRuns.slice(0, RECENT_SHUFFLE_RUN_LIMIT);
-}
-
-function updateLatestRecentShuffleRun(totalScore, confirmed) {
-    if (!recentShuffleRuns[0]) return;
-    const score = coerceStoredTotalScore(totalScore);
-    if (score != null) recentShuffleRuns[0].totalScore = score;
-    if (confirmed === true) recentShuffleRuns[0].confirmed = true;
-}
-
-function getRecentShuffleResults(previewPointDetails) {
-    const results = recentShuffleRuns.slice(0, RECENT_SHUFFLE_RUN_LIMIT).map(entry => ({ ...entry }));
-    if (previewAssignment && pendingHistoryShuffleMeta && results[0]
-        && results[0].seed === pendingHistoryShuffleMeta.seed) {
-        results[0].totalScore = coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
-            ?? results[0].totalScore;
-    }
-    return results;
-}
-
-function formatShuffleResult(result) {
-    if (!result || result.seed == null) return '—';
-    const score = coerceStoredTotalScore(result.totalScore);
-    return `${result.seed} / 合計 ${score == null ? '—' : formatPenaltyPoints(score)}点`;
-}
-
-function syncShuffleSeedControlsFromState(previewPointDetails) {
-    const input = getShuffleSeedInputElement();
-    if (input) input.value = shuffleSeedInput;
-    const results = getRecentShuffleResults(previewPointDetails);
-    const used = document.getElementById('shuffle-seed-used');
-    if (used) used.textContent = formatShuffleResult(results[0]);
-
-    [
-        ['shuffle-seed-previous', '前回', results[1]],
-        ['shuffle-seed-before-previous', '前々回', results[2]],
-        ['shuffle-seed-three-previous', '3回前', results[3]]
-    ].forEach(([id, label, result]) => {
-        const button = document.getElementById(id);
-        if (!button) return;
-        button.textContent = `${label}: ${formatShuffleResult(result)}`;
-        button.disabled = !result || result.seed == null;
+function getShuffleCandidateContextKey() {
+    return JSON.stringify({
+        students: currentStudents.map(s => [s.id, s.name, s.kana, s.gender, s.attr1, s.attr2, s.flags]),
+        rules: document.getElementById('overall-rules').value,
+        layout: document.getElementById('layout-rules').value,
+        fairness: exportFairnessSettings(),
+        scores: exportSoftScoreSettings(),
+        edges: exportEdgeSettings()
     });
 }
 
-/** 過去のseedボタンは入力欄へ値を入れるだけで、シャッフルは実行しない。 */
-function applyRecentShuffleSeed(index) {
-    const result = getRecentShuffleResults()[index];
-    if (!result || result.seed == null) return;
-    shuffleSeedInput = String(result.seed);
-    syncShuffleSeedControlsFromState();
-    const input = getShuffleSeedInputElement();
-    if (input) {
-        input.focus();
-        input.select();
+function recordShuffleCandidate() {
+    if (!previewAssignment || !pendingHistoryShuffleMeta) return;
+    const candidate = normalizeShuffleCandidate({
+        ...pendingHistoryShuffleMeta,
+        assignment: previewAssignment,
+        inactiveSeats: Array.from(inactiveSeats),
+        contextKey: getShuffleCandidateContextKey(),
+        checkerboardOffset,
+        exceptions: Array.from(currentExceptions)
+    });
+    if (!candidate) return;
+    shuffleCandidates.unshift(candidate);
+    shuffleCandidates = shuffleCandidates.slice(0, SHUFFLE_CANDIDATE_LIMIT);
+    shuffleCandidateIndex = 0;
+    syncShuffleCandidateControls();
+}
+
+function updateCurrentShuffleCandidate(totalScore, confirmed = false) {
+    const candidate = shuffleCandidates[shuffleCandidateIndex];
+    if (!candidate || !pendingHistoryShuffleMeta) return;
+    if (previewAssignment) {
+        candidate.assignment = JSON.parse(JSON.stringify(previewAssignment));
+        candidate.inactiveSeats = Array.from(inactiveSeats);
     }
+    candidate.manuallyModified = pendingHistoryShuffleMeta.manuallyModified === true;
+    if (totalScore != null) candidate.totalScore = coerceStoredTotalScore(totalScore);
+    if (confirmed) candidate.confirmed = true;
+}
+
+function syncShuffleCandidateControls() {
+    const older = document.getElementById('btn-candidate-older');
+    const newer = document.getElementById('btn-candidate-newer');
+    const status = document.getElementById('shuffle-candidate-status');
+    const busy = isCalculating || exceptionMode;
+    if (older) older.disabled = busy || shuffleCandidateIndex + 1 >= shuffleCandidates.length;
+    if (newer) newer.disabled = busy || shuffleCandidateIndex <= 0;
+    if (status) status.textContent = shuffleCandidates.length === 0 ? '候補なし'
+        : shuffleCandidateIndex < 0 ? `全${shuffleCandidates.length}件`
+        : `${shuffleCandidateIndex === 0 ? '最新' : shuffleCandidateIndex + '回前'} / ${shuffleCandidates.length}件`;
+}
+
+function navigateShuffleCandidate(direction) {
+    if (direction !== 1 && direction !== -1) return;
+    restoreShuffleCandidate(shuffleCandidateIndex + direction);
+}
+
+function restoreShuffleCandidate(index) {
+    if (isCalculating || exceptionMode || !Number.isInteger(index)) return false;
+    const candidate = shuffleCandidates[index];
+    if (!candidate) return false;
+    const candidateIds = candidate.assignment.filter(Boolean).map(s => s.id);
+    if (candidate.contextKey !== getShuffleCandidateContextKey()
+        || candidateIds.length !== currentStudents.length
+        || currentStudents.some(s => !candidateIds.includes(s.id))) {
+        showAlert('名簿・ルールが変更されているため、この候補は復元できません。現在の条件でシャッフルしてください。', 'warning');
+        return false;
+    }
+    if (previewAssignment && !pendingHistoryShuffleMeta
+        && !confirm('未確定の変更を破棄し、シャッフル候補に切り替えますか？')) return false;
+    updateCurrentShuffleCandidate();
+    clearManualMoveSelection({ render: false, hideMessage: false });
+    invalidateManualSwapEvalCache();
+    if (!previewInactiveSeatsBackup) previewInactiveSeatsBackup = new Set(inactiveSeats);
+    inactiveSeats = new Set(candidate.inactiveSeats);
+    inactiveSeatBackup.clear();
+    previewAssignment = JSON.parse(JSON.stringify(candidate.assignment));
+    shuffleCandidateIndex = index;
+    pendingHistoryMemoOnCommit = null;
+    pendingHistoryShuffleMeta = {
+        seed: candidate.seed,
+        seedSource: candidate.seedSource,
+        algorithmVersion: candidate.algorithmVersion,
+        isCheckerboard: candidate.isCheckerboard,
+        manuallyModified: candidate.manuallyModified,
+        totalScore: candidate.totalScore
+    };
+    checkerboardOffset = candidate.checkerboardOffset;
+    currentExceptions = new Set(candidate.exceptions);
+    lastShuffleLog = null; // 別の実行のログを候補のログとして表示しない。
+    clearManualSwapUndoStack();
+    setActionButtons(true, false);
+    updateCounters();
+    renderAssignments();
+    syncShuffleCandidateControls();
+    showAlert('候補を復元しました。内容を確認し、「座席を確定」を押してください。', 'info');
+    return true;
 }
 
 function refreshBackupStatus() {
@@ -1205,31 +1235,24 @@ function refreshBackupStatus() {
     status.textContent = lastBackupAt ? `最終バックアップ: ${lastBackupAt}` : '最終バックアップ: まだ保存していません';
 }
 
-function resolveShuffleRunFromInput() {
-    const input = getShuffleSeedInputElement();
-    shuffleSeedInput = input ? String(input.value || '').trim() : shuffleSeedInput;
-    const parsed = parseShuffleSeed(shuffleSeedInput);
-    if (!parsed.ok) {
-        showAlert(parsed.message);
-        if (input) input.focus();
-        return null;
-    }
-    const seed = parsed.isSpecified ? parsed.seed : createAutomaticShuffleSeed();
-    lastUsedShuffleSeed = seed;
-    syncShuffleSeedControlsFromState();
-    return {
-        seed,
-        seedSource: parsed.isSpecified ? 'specified' : 'automatic',
-        algorithmVersion: SHUFFLE_ALGORITHM_VERSION
-    };
+/** 引数は開発時の比較・検証用。利用者の操作では常に新しいseedを使う。 */
+function createShuffleRun(seed = createAutomaticShuffleSeed()) {
+    const parsed = parseShuffleSeed(seed);
+    if (!parsed.ok || !parsed.isSpecified) throw new Error('INVALID_SHUFFLE_SEED');
+    lastUsedShuffleSeed = parsed.seed;
+    return { seed: parsed.seed, seedSource: 'automatic', algorithmVersion: SHUFFLE_ALGORITHM_VERSION };
 }
 
 function clearPendingHistoryShuffleMeta() {
     pendingHistoryShuffleMeta = null;
+    shuffleCandidateIndex = -1;
 }
 
 function markPendingShuffleAsManuallyModified() {
-    if (pendingHistoryShuffleMeta) pendingHistoryShuffleMeta.manuallyModified = true;
+    if (!pendingHistoryShuffleMeta) return;
+    pendingHistoryShuffleMeta.manuallyModified = true;
+    updateCurrentShuffleCandidate();
+    saveCurrentClassData();
 }
 
 function updateMainViewToggleUi() {
@@ -1601,6 +1624,7 @@ function setActionButtons(commitVisible, logVisible) {
     setPreviewActionButtonVisibility('btn-commit', commitVisible);
     setPreviewActionButtonVisibility('btn-cancel-preview', commitVisible);
     setPreviewActionButtonVisibility('btn-show-log', logVisible);
+    syncShuffleCandidateControls();
 }
 
 /** 縦画面のプレビュー操作は、非表示中もPC・タブレットでは専用の列を保つ。 */
@@ -3912,6 +3936,7 @@ function handleSeatClick(index) {
     }
 
     const seatEl = getSeatElement(index);
+    if (previewAssignment && !previewInactiveSeatsBackup) previewInactiveSeatsBackup = new Set(inactiveSeats);
     if (inactiveSeats.has(index)) {
         inactiveSeats.delete(index);
         seatEl.classList.remove('inactive');
@@ -3933,6 +3958,7 @@ function handleSeatClick(index) {
         }
     }
     invalidateManualSwapEvalCache();
+    markPendingShuffleAsManuallyModified();
     updateCounters(); renderAssignments(); saveCurrentClassData();
 }
 
@@ -4427,12 +4453,12 @@ function finalizeShuffleSuccess(bestAssign, finalScore) {
             totalScore: coerceStoredTotalScore(finalScore)
         };
         pendingHistoryShuffleMeta = { ...shuffleRunMeta };
-        addRecentShuffleRun({ ...shuffleRunMeta, confirmed: false });
-        // 未確定の結果も再読み込み・バックアップ後にseedを再利用できるよう保存する。
+        recordShuffleCandidate();
+        // 未確定の配置も再読み込み・バックアップ後に復元できるよう保存する。
         saveCurrentClassData();
     }
     activeShuffleRun = null;
-    syncShuffleSeedControlsFromState({ totalScore: finalScore });
+    syncShuffleCandidateControls();
     setActionButtons(true, true);
     if (finalScore > 0) {
         showAlert(`シャッフル完了。\n必須ルールを守ったうえで、個人ポイントの集中を優先して抑えました。金枠の座席と「詳細ログ」で内訳を確認できます。`, "warning");
@@ -5487,39 +5513,6 @@ function toggleLogDetail(id, btnEl) {
 }
 function closeLogModal() { document.getElementById('log-modal').style.display = 'none'; }
 
-let shuffleSeedHelpEscListener = null;
-
-function openShuffleSeedHelpModal() {
-    const modal = document.getElementById('shuffle-seed-help-modal');
-    if (!modal) return;
-    modal.style.display = 'flex';
-    const closeButton = document.getElementById('shuffle-seed-help-close');
-    if (closeButton) closeButton.focus();
-    if (!shuffleSeedHelpEscListener) {
-        shuffleSeedHelpEscListener = event => {
-            if (event.key === 'Escape' || event.key === 'Esc') closeShuffleSeedHelpModal();
-        };
-        document.addEventListener('keydown', shuffleSeedHelpEscListener);
-    }
-}
-
-function closeShuffleSeedHelpModal() {
-    const modal = document.getElementById('shuffle-seed-help-modal');
-    if (modal) modal.style.display = 'none';
-    if (shuffleSeedHelpEscListener) {
-        document.removeEventListener('keydown', shuffleSeedHelpEscListener);
-        shuffleSeedHelpEscListener = null;
-    }
-    const trigger = document.querySelector('.shuffle-seed-help-button');
-    if (trigger) trigger.focus();
-}
-
-// --- 市松シャッフル: 左上席の性別（オフセット）を選ぶモーダル ---
-
-/**
- * 指定オフセット（0/1）における市松モードでの「候補席0件」となる生徒を列挙する。
- * 副作用なしで動作するよう、checkerboardOffset を一時退避→復元する。
- */
 function computeCheckerboardConflictsAt(offset, tempStudents, parsedOverallRules, parsedRuleSet, bounds) {
     const prevOffset = checkerboardOffset;
     checkerboardOffset = offset;
@@ -5693,7 +5686,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
         guardBothEdgesWindowForShuffle(() => { prepareShuffle(isCheckerboard, { skipEdgeGuard: true }); });
         return;
     }
-    const shuffleRun = resolveShuffleRunFromInput();
+    const shuffleRun = createShuffleRun();
     if (!shuffleRun) return;
     clearManualMoveSelection({ render: false, hideMessage: false });
     shuffleRun.isCheckerboard = Boolean(isCheckerboard);
@@ -5845,7 +5838,6 @@ function showLogModal() {
         <div class="log-section">
             <h3>配置調整の処理記録</h3>
             <ul class="log-list">
-                ${log.seed != null ? `<li>・使用seed：<b>${log.seed}</b>${log.seedSource === 'automatic' ? '（自動生成）' : '（指定）'} ／ アルゴリズム <b>${escapeHtml(log.algorithmVersion || '')}</b></li>` : ''}
                 <li>・総計算時間：<b>${log.totalTime.toFixed(2)} 秒</b> （ポイントが残る場合は約20秒まで調整。0なら早期終了）</li>
                 <li>・初期解生成（MRVバックトラッキング）：<b>${(log.phaseATime || 0).toFixed(2)} 秒</b>${log.initialSolutionRuns != null ? `（生成 <b>${log.initialSolutionRuns}</b> 通り）` : (log.multiStartRuns != null ? `（生成 <b>${log.multiStartRuns}</b> 通り）` : '')}</li>
                 <li>・焼きなまし探索（SA）：<b>${(log.phaseBTime || 0).toFixed(2)} 秒</b>${log.annealingStartRuns != null ? `（上位 <b>${log.eliteStartRuns}</b> 通り＋多様 <b>${log.diverseStartRuns}</b> 通りの計 <b>${log.annealingStartRuns}</b> 通り／エリートは選抜内第 <b>${(log.eliteIndex ?? 0) + 1}</b>）` : (log.multiStartRuns != null ? `（エリートは<b>第 ${(log.eliteIndex ?? 0) + 1}</b> 通り）` : '')}</li>
@@ -6134,7 +6126,7 @@ function renderAssignments() {
     const parsedOverallRules = parseOverallRulesText(rulesText);
     const ngMap = buildNgPairsMap(currentStudents, rulesText);
     const previewPointDetails = getPreviewPointDetails();
-    syncShuffleSeedControlsFromState(previewPointDetails);
+    syncShuffleCandidateControls();
     const previewLegend = document.getElementById('preview-points-legend');
     const hasPreviewPoints = Boolean(previewPointDetails && Number(previewPointDetails.totalScore) > 0);
     if (previewLegend) previewLegend.hidden = !hasPreviewPoints;
@@ -6252,15 +6244,15 @@ function commitSeats() {
     clearManualMoveSelection({ render: false, hideMessage: false });
     invalidateManualSwapEvalCache();
     const previewPointDetails = getPreviewPointDetails();
-    seatAssignment = [...previewAssignment]; previewAssignment = null;
     const memo = pendingHistoryMemoOnCommit || '';
     pendingHistoryMemoOnCommit = null;
     const shuffleMeta = pendingHistoryShuffleMeta ? { ...pendingHistoryShuffleMeta } : null;
     if (shuffleMeta) {
         shuffleMeta.totalScore = coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
             ?? coerceStoredTotalScore(shuffleMeta.totalScore);
-        updateLatestRecentShuffleRun(shuffleMeta.totalScore, true);
+        updateCurrentShuffleCandidate(shuffleMeta.totalScore, true);
     }
+    seatAssignment = [...previewAssignment]; previewAssignment = null;
     clearPendingHistoryShuffleMeta();
     previewInactiveSeatsBackup = null;
     clearManualSwapUndoStack();
@@ -7421,8 +7413,7 @@ function saveCurrentClassData() {
         ...exportFairnessSettings(),
         ...exportSoftScoreSettings(),
         ...exportEdgeSettings(),
-        inactiveSeats: Array.from(persistedInactiveSeats), assignment: seatAssignment, histories: histories, recentShuffleRuns: recentShuffleRuns, colors: appearance.colors,
-        shuffleSeedInput: shuffleSeedInput,
+        inactiveSeats: Array.from(persistedInactiveSeats), assignment: seatAssignment, histories: histories, shuffleCandidates: shuffleCandidates, colors: appearance.colors,
         lastUsedShuffleSeed: lastUsedShuffleSeed,
         lastBackupAt: lastBackupAt,
         genderBorderData: appearance.genderBorderData,
@@ -7444,6 +7435,7 @@ function loadCurrentClassData() {
     
     previewAssignment = null;
     previewInactiveSeatsBackup = null;
+    clearPendingHistoryShuffleMeta();
     pendingHistoryMemoOnCommit = null;
     lastBackupAt = '';
     setActionButtons(false, false);
@@ -7472,7 +7464,6 @@ function loadCurrentClassData() {
             syncClassScopedControlsFromGlobals();
             inactiveSeats = new Set(data.inactiveSeats || []); seatAssignment = data.assignment || new Array(TOTAL_SEATS).fill(null);
             printInactiveMode = data.printInactiveMode === 'frame' ? 'frame' : 'hide';
-            shuffleSeedInput = typeof data.shuffleSeedInput === 'string' ? data.shuffleSeedInput : '';
             lastUsedShuffleSeed = coerceStoredShuffleSeed(data.lastUsedShuffleSeed);
             lastBackupAt = typeof data.lastBackupAt === 'string' ? data.lastBackupAt : '';
             histories = (data.histories || []).map(h => ({
@@ -7487,12 +7478,11 @@ function loadCurrentClassData() {
                 manuallyModified: h.manuallyModified === true,
                 totalScore: coerceStoredTotalScore(h.totalScore)
             }));
-            recentShuffleRuns = loadRecentShuffleRuns(data.recentShuffleRuns, histories, lastUsedShuffleSeed);
+            shuffleCandidates = loadShuffleCandidates(data.shuffleCandidates);
         } catch(e) { console.error("データ読み込みエラー", e); }
     } else {
-        currentStudents = []; inactiveSeats.clear(); seatAssignment = new Array(TOTAL_SEATS).fill(null); histories = []; recentShuffleRuns = [];
+        currentStudents = []; inactiveSeats.clear(); seatAssignment = new Array(TOTAL_SEATS).fill(null); histories = []; shuffleCandidates = [];
         printInactiveMode = 'hide';
-        shuffleSeedInput = '';
         lastUsedShuffleSeed = null;
         lastBackupAt = '';
         resetClassScopedSettingsUI();
@@ -7504,7 +7494,7 @@ function loadCurrentClassData() {
     updateColors(); updateHistorySelect(); updateCounters();
     updateClassNameDisplay();
     updatePrintInactiveToggleUi();
-    syncShuffleSeedControlsFromState();
+    syncShuffleCandidateControls();
     refreshBackupStatus();
     renderAssignments();
     syncConstraintsBaselineFromPersisted();
@@ -7521,15 +7511,14 @@ function updateHistorySelect() {
         const memoInput = document.getElementById('history-memo-input');
         if (memoInput) memoInput.value = '';
         updateDeskTitleDisplay();
-        syncShuffleSeedControlsFromState();
+        syncShuffleCandidateControls();
         return;
     }
     histories.forEach((historyEntry, index) => {
         const option = document.createElement('option');
         option.value = index;
         const memo = (historyEntry.memo || '').trim();
-        const seedLabel = historyEntry.seed == null ? '' : `seed ${historyEntry.seed}${historyEntry.manuallyModified ? '（手動変更あり）' : ''}`;
-        option.text = [historyEntry.date, memo, seedLabel].filter(Boolean).join(' │ ');
+        option.text = [historyEntry.date, memo].filter(Boolean).join(' │ ');
         option.title = option.text;
         historySelect.appendChild(option);
     });
@@ -7537,7 +7526,7 @@ function updateHistorySelect() {
     historySelect.dataset.appliedValue = historySelect.value;
     updateHistorySelectTitle();
     syncHistoryMemoInput();
-    syncShuffleSeedControlsFromState();
+    syncShuffleCandidateControls();
     updateDeskTitleDisplay();
 }
 
@@ -7560,6 +7549,7 @@ function requestHistorySelectionToBoard() {
 
 /** プルダウンで選んだ履歴の座席・空席を確定盤面として反映（グレー予約状態にはしない） */
 function applyHistorySelectionToBoard() {
+    clearPendingHistoryShuffleMeta();
     invalidateManualSwapEvalCache();
     clearManualMoveSelection({ render: false, hideMessage: false });
     const sel = document.getElementById('history-select');
@@ -7631,10 +7621,11 @@ function deleteSelectedHistory() {
     }
 }
 function clearAllHistories() {
-    if(histories.length === 0 && recentShuffleRuns.length === 0) return alert("削除する履歴がありません。");
-    if(confirm("【確認】過去の座席履歴と再現用seedの実行履歴をすべて削除します。\nペアの重複制限やローテーション制限もクリアされます。\n（新学期や席替えルールのリセットに最適です）\nよろしいですか？")) {
+    if(histories.length === 0 && shuffleCandidates.length === 0) return alert("削除する履歴がありません。");
+    if(confirm("【確認】過去の座席履歴とシャッフル候補をすべて削除します。\nペアの重複制限やローテーション制限もクリアされます。\n（新学期や席替えルールのリセットに最適です）\nよろしいですか？")) {
         histories = [];
-        recentShuffleRuns = [];
+        shuffleCandidates = [];
+        clearPendingHistoryShuffleMeta();
         invalidateManualSwapEvalCache();
         saveCurrentClassData(); updateHistorySelect();
         applyHistorySelectionToBoard();
@@ -8009,6 +8000,7 @@ function onImportBackupFileChange(e) {
 
 /** 通知は利用者入力をHTMLとして解釈しない。操作が必要な場合もDOM要素で追加する。 */
 function showAlert(msg, type='error', action = null) {
+    syncShuffleCandidateControls();
     const b = document.getElementById('alert-box');
     if (!b) return;
     b.replaceChildren();

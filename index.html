@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20260910-color-layout-v1">
+<link rel="stylesheet" href="styles.css?v=20261025-shuffle-candidates-v1">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -114,7 +114,7 @@
 <div id="delete-all-data-modal" class="modal-overlay delete-all-data-modal" style="display:none;" aria-modal="true" role="alertdialog" aria-labelledby="delete-all-data-title">
     <div class="modal-content delete-all-data-modal-content" style="max-width: 560px;">
         <h2 id="delete-all-data-title">このブラウザのSekiGaeデータをすべて削除しますか？</h2>
-        <p>全クラスのクラス名、名簿、座席配置、履歴、再現用seed、ルール、表示・印刷設定を削除します。元に戻せません。</p>
+        <p>全クラスのクラス名、名簿、座席配置、履歴、シャッフル候補、ルール、表示・印刷設定を削除します。元に戻せません。</p>
         <p>ダウンロード済みのバックアップ、PDF、印刷物、別の端末・ブラウザのデータは削除されません。</p>
         <p id="delete-all-data-status" class="delete-all-data-status" aria-live="polite" hidden></p>
         <div class="delete-all-data-backup-row">
@@ -133,7 +133,7 @@
 <div id="sample-delete-info-modal" class="modal-overlay sample-delete-info-modal" style="display:none;" aria-modal="true" role="dialog" aria-labelledby="sample-delete-info-title">
     <div class="modal-content sample-delete-info-modal-content" style="max-width: 540px;">
         <h2 id="sample-delete-info-title">全データ削除機能について</h2>
-        <p>通常版では、全クラスの名簿、座席配置、履歴、再現用seed、ルール、表示・印刷設定を削除できます。削除前にはバックアップを作成でき、確認のため「全削除」の入力が必要です。</p>
+        <p>通常版では、全クラスの名簿、座席配置、履歴、シャッフル候補、ルール、表示・印刷設定を削除できます。削除前にはバックアップを作成でき、確認のため「全削除」の入力が必要です。</p>
         <p>このサンプル版では実際の削除は行いません。再読み込みすると、サンプルの変更は初期状態に戻ります。通常版の保存データには影響しません。</p>
         <div class="sample-delete-info-actions">
             <button type="button" class="btn btn-outline" onclick="closeSampleDeleteInfoModal()">閉じる</button>
@@ -260,23 +260,6 @@
     </div>
 </div>
 
-<div id="shuffle-seed-help-modal" class="modal-overlay shuffle-seed-help-modal" style="display: none;" aria-modal="true" role="dialog" aria-labelledby="shuffle-seed-help-title" onclick="if(event.target === this) closeShuffleSeedHelpModal()">
-    <div class="modal-content shuffle-seed-help-modal-content">
-        <h2 id="shuffle-seed-help-title">再現性seedについて</h2>
-        <div class="shuffle-seed-help-body">
-            <h3>seedとは</h3>
-            <p>シャッフルで候補を試す順番など、探索の初期条件を決める番号です。同じseedを使うと、現在の名簿・座席・ルール設定に対して、同じ探索の初期条件からシャッフルを始めます。</p>
-            <p>探索順を確認するための番号です。同じ番号でも端末や処理時間により配置が変わることがあります。未確定の実行も今回〜3回前まで表示します。</p>
-            <h3>過去のseedでもう一度試す</h3>
-            <p>「前回」「前々回」「3回前」を押すと、その番号が入力欄に入ります。記録した番号を直接入力することもできます。</p>
-            <p>入力欄に過去のseedを入力して「シャッフル」を押すと、同じseedで探索の初期条件を再現してシャッフルを実施できます。名簿・座席・ルール設定が以前と異なる場合は、以前と同じ配置にはなりません。</p>
-        </div>
-        <div class="shuffle-seed-help-modal-actions">
-            <button type="button" class="btn btn-outline" id="shuffle-seed-help-close" onclick="closeShuffleSeedHelpModal()">閉じる</button>
-        </div>
-    </div>
-</div>
-
 <div id="seat-track-modal" class="modal-overlay" onclick="if(event.target === this) closeSeatTrackModal()">
     <div class="modal-content seat-track-modal-content">
         <h2 style="border:none; font-size:1.15em; color: #2c3e50; margin-bottom: 8px;">座席追跡</h2>
@@ -379,6 +362,11 @@
                 <button class="btn seat-action-button" style="padding: 10px 20px; font-size: 1.1em;" onclick="openSortModal()">整列</button>
                 <button class="btn btn-outline seat-action-button" style="padding: 10px 15px;" onclick="resetPlacement()">クリア</button>
             </div>
+            <div class="shuffle-candidate-controls" role="group" aria-label="最近のシャッフル候補">
+                <button type="button" class="btn btn-outline" id="btn-candidate-older" onclick="navigateShuffleCandidate(1)" disabled>前の候補</button>
+                <output id="shuffle-candidate-status" aria-live="polite" aria-atomic="true">候補なし</output>
+                <button type="button" class="btn btn-outline" id="btn-candidate-newer" onclick="navigateShuffleCandidate(-1)" disabled>次の候補</button>
+            </div>
             <div class="flex-row preview-action-buttons is-action-group-empty" style="gap: 10px;">
                 <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-show-log" style="padding: 10px 15px;" onclick="showLogModal()">詳細ログ</button>
                 <button class="btn btn-outline action-preview-button is-action-hidden" id="btn-undo-manual-swap" style="padding: 10px 15px;" onclick="undoLastManualSwap()">手動変更を戻す</button>
@@ -462,19 +450,6 @@
 
         <div class="panel">
             <h2>データ・履歴管理</h2>
-            <div class="shuffle-seed-row">
-                <div class="shuffle-seed-label-group">
-                    <label for="shuffle-seed-input">再現性seed（任意）</label>
-                    <button type="button" class="shuffle-seed-help-button" onclick="openShuffleSeedHelpModal()" aria-label="再現性seedの説明を開く" aria-haspopup="dialog" aria-controls="shuffle-seed-help-modal">？</button>
-                </div>
-                <input type="text" id="shuffle-seed-input" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="10" placeholder="空欄で自動生成">
-                <div class="shuffle-seed-history" aria-label="最近の再現用seed">
-                    <span class="shuffle-seed-used">今回: <output id="shuffle-seed-used">—</output></span>
-                    <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-previous" onclick="applyRecentShuffleSeed(1)" disabled>前回: —</button>
-                    <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-before-previous" onclick="applyRecentShuffleSeed(2)" disabled>前々回: —</button>
-                    <button type="button" class="shuffle-seed-history-btn" id="shuffle-seed-three-previous" onclick="applyRecentShuffleSeed(3)" disabled>3回前: —</button>
-                </div>
-            </div>
             <div class="history-management-block">
                 <label for="history-memo-input" class="history-management-label">配置名（選択中の履歴）</label>
                 <div class="flex-row history-management-row">
@@ -716,6 +691,6 @@
     </div>
 </div>
 
-<script src="app.js?v=20260910-color-layout-v1"></script>
+<script src="app.js?v=20261025-shuffle-candidates-v1"></script>
 </body>
 </html>
