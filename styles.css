@@ -775,8 +775,8 @@ body.ui-layout-portrait #tab-main > .classroom-wrapper { order: 4; }
 body.ui-layout-portrait #tab-main > .settings-bottom { order: 5; }
 body.ui-layout-portrait .action-bar-bottom {
     display: grid;
-    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.2fr) minmax(0, 0.72fr) minmax(0, 0.78fr) minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(0, 1.12fr) minmax(0, 1.3fr);
-    grid-template-areas: "checkerboard shuffle sort clear log undo cancel commit";
+    grid-template-columns: minmax(44px, 0.55fr) minmax(82px, 1.1fr) minmax(44px, 0.55fr) minmax(54px, 0.65fr) minmax(240px, 2.9fr) minmax(82px, 1fr) minmax(90px, 1.1fr);
+    grid-template-areas: "checkerboard shuffle sort clear candidates cancel commit";
     align-items: stretch;
     gap: 6px;
 }
@@ -794,9 +794,9 @@ body.ui-layout-portrait .seat-action-button,
 body.ui-layout-portrait .action-preview-button {
     width: 100%;
     min-width: 0;
-    min-height: 40px;
-    padding: 8px 5px !important;
-    font-size: clamp(0.68em, 1.45vw, 0.9em) !important;
+    min-height: 44px;
+    padding: 8px 6px !important;
+    font-size: 14px !important;
     line-height: 1.2;
     white-space: nowrap;
 }
@@ -821,7 +821,28 @@ body.ui-layout-landscape .settings-bottom label[for="history-select"] { display:
 .shuffle-candidate-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .shuffle-candidate-controls .btn { min-height: 36px; padding: 6px 10px; font-size: 0.82em; }
 .shuffle-candidate-controls output { min-width: 7em; text-align: center; font-size: 0.78em; color: #475569; font-variant-numeric: tabular-nums; }
-body.ui-layout-portrait .shuffle-candidate-controls { grid-column: 1 / -1; grid-row: 2; }
+body.ui-layout-portrait .shuffle-candidate-controls {
+    grid-area: candidates;
+    display: grid;
+    grid-template-columns: minmax(70px, 1fr) 88px minmax(70px, 1fr);
+    gap: 6px;
+    margin-inline: 4px;
+}
+body.ui-layout-portrait .shuffle-candidate-controls .btn { min-height: 44px; padding: 8px 6px; font-size: 14px; white-space: nowrap; }
+body.ui-layout-portrait .shuffle-candidate-controls output { min-width: 0; font-size: 12px; white-space: nowrap; }
+/* 補助操作だけを必要時に2行目へ。候補の切替と確定操作は同じ行を維持する。 */
+@media (min-width: 641px) and (max-width: 959px) {
+    body.ui-layout-portrait #btn-show-log { grid-area: auto; grid-column: 1 / 3; grid-row: 2; width: auto; justify-self: start; }
+    body.ui-layout-portrait #btn-undo-manual-swap { grid-area: auto; grid-column: 3 / 6; grid-row: 2; width: auto; justify-self: start; }
+    body.ui-layout-portrait #btn-show-log.is-action-hidden,
+    body.ui-layout-portrait #btn-undo-manual-swap.is-action-hidden { display: none; }
+}
+@media (min-width: 960px) {
+    body.ui-layout-portrait .action-bar-bottom {
+        grid-template-columns: minmax(44px, 0.55fr) minmax(82px, 1.1fr) minmax(44px, 0.55fr) minmax(54px, 0.65fr) minmax(240px, 2.9fr) minmax(68px, 0.85fr) minmax(110px, 1.35fr) minmax(82px, 1fr) minmax(90px, 1.1fr);
+        grid-template-areas: "checkerboard shuffle sort clear candidates log undo cancel commit";
+    }
+}
 body.ui-layout-landscape .settings-action-slot .shuffle-candidate-controls { gap: 6px; }
 body.ui-layout-landscape .settings-action-slot .shuffle-candidate-controls .btn { flex: 1; padding-inline: 6px; }
 .preview-points-legend { width: 100%; max-width: 1100px; margin: -5px 0 10px; padding: 7px 10px; border: 1px solid #e4b94f; border-radius: 5px; background: #fff8dd; color: #5d4500; font-size: 0.82em; }
