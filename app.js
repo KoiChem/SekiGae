@@ -2922,7 +2922,8 @@ function toggleView() {
 function normalizePrintSeatGaps(value) {
     const normalize = (axis, count) => Array.from({ length: count }, (_, index) => {
         const multiplier = Array.isArray(value?.[axis]) ? value[axis][index] : 1;
-        return multiplier === 1.5 || multiplier === 2 ? multiplier : 1;
+        if (multiplier === 1.5 || multiplier === 2) return 2;
+        return multiplier === 3 ? 3 : 1;
     });
     return { columns: normalize('columns', NUM_COLS - 1), rows: normalize('rows', NUM_ROWS - 1) };
 }
@@ -2938,7 +2939,7 @@ function cyclePrintGap(axis, index) {
     if ((axis !== 'columns' && axis !== 'rows') || !Number.isInteger(index)
         || index < 0 || index >= printSeatGaps[axis].length) return;
     const current = printSeatGaps[axis][index];
-    printSeatGaps[axis][index] = current === 1 ? 1.5 : current === 1.5 ? 2 : 1;
+    printSeatGaps[axis][index] = current === 1 ? 2 : current === 2 ? 3 : 1;
     saveCurrentClassData();
     renderPrintLayout({ axis, index });
 }
@@ -2955,7 +2956,7 @@ function renderPrintGapControls(bounds) {
         const end = axis === 'columns' ? bounds.currMaxC : bounds.currMaxR;
         for (let index = start; index < end; index++) {
             const multiplier = printSeatGaps[axis][index];
-            const next = multiplier === 1 ? 1.5 : multiplier === 1.5 ? 2 : 1;
+            const next = multiplier === 1 ? 2 : multiplier === 2 ? 3 : 1;
             const unit = axis === 'columns' ? '列' : '行';
             const label = `教卓から見て${axis === 'columns' ? '左から' : '手前から'}${index + 1}${unit}目と${index + 2}${unit}目の間隔：${multiplier}倍。押すと${next}倍`;
             const button = document.createElement('button');
@@ -2967,7 +2968,7 @@ function renderPrintGapControls(bounds) {
             button.title = label;
             button.setAttribute('aria-label', label);
             button.setAttribute('aria-pressed', String(multiplier > 1));
-            const halfWidth = multiplier === 1 ? 2 : multiplier === 1.5 ? 5 : 8;
+            const halfWidth = multiplier === 1 ? 2 : multiplier === 2 ? 5 : 8;
             button.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1 L${10 + halfWidth} 19 L${10 - halfWidth} 19 Z" fill="currentColor"/></svg>`;
             button.onclick = () => cyclePrintGap(axis, index);
             controls.appendChild(button);
@@ -2993,21 +2994,21 @@ function positionPrintGapControls() {
         const cellSize = ((isColumn ? gridRect.width : gridRect.height)
             - gaps[axis].reduce((sum, value) => sum + value, 0) * gapPx) / (gaps[axis].length + 1);
         // 狭い画面でも操作領域どうしの間に最低6pxを残す。
-        const size = Math.min(32, Math.max(1, cellSize + gapPx - 6));
+        const size = Math.min(28, Math.max(1, cellSize + gapPx - 6));
         let offset = 0;
         controls.querySelectorAll(`[data-axis="${axis}"]`).forEach((button, index) => {
             const gap = gaps[axis][index] * gapPx;
             offset += cellSize + gap / 2;
             const x = isColumn
                 ? (studentView ? gridRect.right - offset : gridRect.left + offset)
-                : (studentView ? pageRect.right + 18 : pageRect.left - 18);
+                : (studentView ? pageRect.right + 16 : pageRect.left - 16);
             const y = isColumn
-                ? (studentView ? pageRect.top - 18 : pageRect.bottom + 18)
+                ? (studentView ? pageRect.top - 16 : pageRect.bottom + 16)
                 : (studentView ? gridRect.top + offset : gridRect.bottom - offset);
             button.style.left = `${x - shellRect.left}px`;
             button.style.top = `${y - shellRect.top}px`;
-            button.style.width = `${isColumn ? size : 32}px`;
-            button.style.height = `${isColumn ? 32 : size}px`;
+            button.style.width = `${isColumn ? size : 28}px`;
+            button.style.height = `${isColumn ? 28 : size}px`;
             offset += gap / 2;
         });
     }
@@ -3044,7 +3045,7 @@ function updatePrintPreviewChromeLayout() {
     // A4 の通常 CSS px 幅を下限にする。side 判定だけは「自然A4を置けるか」で行う。
     const nominalA4Width = printOrientation === 'portrait' ? (190 * 96 / 25.4) : (277 * 96 / 25.4);
     const naturalWidth = Math.max(page.offsetWidth, nominalA4Width);
-    const previewWidthIfSide = window.innerWidth - 340 - 16 - 32 - 36;
+    const previewWidthIfSide = window.innerWidth - 340 - 16 - 32 - 32;
     const candidateScale = naturalWidth > 0 ? previewWidthIfSide / naturalWidth : 0;
     const side = Boolean(panel && !panel.hidden && window.matchMedia('(orientation: landscape)').matches && window.innerHeight >= 600 && candidateScale >= 0.78);
     document.body.classList.toggle('print-settings-side', side);
@@ -3061,7 +3062,7 @@ function applyPrintScreenScale() {
     resetPrintScreenScale();
     const naturalWidth = page.offsetWidth;
     const naturalHeight = page.offsetHeight;
-    const availableWidth = Math.max(1, root.clientWidth - 36);
+    const availableWidth = Math.max(1, root.clientWidth - 32);
     const scale = Math.min(1, availableWidth / naturalWidth);
     page.style.transformOrigin = 'top left';
     page.style.transform = `scale(${scale})`;
