@@ -1106,6 +1106,8 @@ let printInactiveMode = 'hide';
 let printOrientation = 'landscape';
 /** 印刷プレビュー専用の視点。null は通常画面の現在視点を引き継ぐ。保存データには含めない。 */
 let printIsStudentView = null;
+/** 行・列の物理的な境界ごとの印刷間隔。履歴ではなくクラス設定として保存する。 */
+let printSeatGaps = normalizePrintSeatGaps();
 // 例外席選択中、座席固定により反転禁止となっている席のインデックス集合
 let protectedExceptionSeats = new Set();
 /** バックアップ読込で選択モーダルを出すまで保持する解析済み JSON オブジェクト */
@@ -2917,6 +2919,101 @@ function toggleView() {
     scheduleFitDeskClassName();
 }
 
+function normalizePrintSeatGaps(value) {
+    const normalize = (axis, count) => Array.from({ length: count }, (_, index) => {
+        const multiplier = Array.isArray(value?.[axis]) ? value[axis][index] : 1;
+        return multiplier === 1.5 || multiplier === 2 ? multiplier : 1;
+    });
+    return { columns: normalize('columns', NUM_COLS - 1), rows: normalize('rows', NUM_ROWS - 1) };
+}
+
+function getVisiblePrintGaps(bounds = getGridBoundaries()) {
+    return {
+        columns: printSeatGaps.columns.slice(bounds.currMinC, bounds.currMaxC),
+        rows: printSeatGaps.rows.slice(bounds.currMinR, bounds.currMaxR)
+    };
+}
+
+function cyclePrintGap(axis, index) {
+    if ((axis !== 'columns' && axis !== 'rows') || !Number.isInteger(index)
+        || index < 0 || index >= printSeatGaps[axis].length) return;
+    const current = printSeatGaps[axis][index];
+    printSeatGaps[axis][index] = current === 1 ? 1.5 : current === 1.5 ? 2 : 1;
+    saveCurrentClassData();
+    renderPrintLayout({ axis, index });
+}
+
+function buildPrintGridTracks(gaps) {
+    return ['minmax(0, 1fr)', ...gaps.flatMap(multiplier => [`${multiplier}mm`, 'minmax(0, 1fr)'])].join(' ');
+}
+
+function renderPrintGapControls(bounds) {
+    const controls = document.querySelector('#print-root .print-gap-controls');
+    if (!controls) return;
+    for (const axis of ['columns', 'rows']) {
+        const start = axis === 'columns' ? bounds.currMinC : bounds.currMinR;
+        const end = axis === 'columns' ? bounds.currMaxC : bounds.currMaxR;
+        for (let index = start; index < end; index++) {
+            const multiplier = printSeatGaps[axis][index];
+            const next = multiplier === 1 ? 1.5 : multiplier === 1.5 ? 2 : 1;
+            const unit = axis === 'columns' ? '列' : '行';
+            const label = `教卓から見て${axis === 'columns' ? '左から' : '手前から'}${index + 1}${unit}目と${index + 2}${unit}目の間隔：${multiplier}倍。押すと${next}倍`;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'print-gap-button';
+            button.dataset.axis = axis;
+            button.dataset.index = String(index);
+            button.dataset.multiplier = String(multiplier);
+            button.title = label;
+            button.setAttribute('aria-label', label);
+            button.setAttribute('aria-pressed', String(multiplier > 1));
+            const halfWidth = multiplier === 1 ? 2 : multiplier === 1.5 ? 5 : 8;
+            button.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1 L${10 + halfWidth} 19 L${10 - halfWidth} 19 Z" fill="currentColor"/></svg>`;
+            button.onclick = () => cyclePrintGap(axis, index);
+            controls.appendChild(button);
+        }
+    }
+}
+
+function positionPrintGapControls() {
+    const shell = document.querySelector('#print-root .print-page-shell');
+    const page = document.querySelector('#print-root .print-page');
+    const grid = document.getElementById('print-seat-grid');
+    const controls = document.querySelector('#print-root .print-gap-controls');
+    if (!shell || !page || !grid || !controls) return;
+    const shellRect = shell.getBoundingClientRect();
+    const pageRect = page.getBoundingClientRect();
+    const gridRect = grid.getBoundingClientRect();
+    const bounds = getGridBoundaries();
+    const gaps = getVisiblePrintGaps(bounds);
+    const studentView = getPrintStudentView();
+    const gapPx = 96 / 25.4 * printScreenScale;
+    for (const axis of ['columns', 'rows']) {
+        const isColumn = axis === 'columns';
+        const cellSize = ((isColumn ? gridRect.width : gridRect.height)
+            - gaps[axis].reduce((sum, value) => sum + value, 0) * gapPx) / (gaps[axis].length + 1);
+        // 狭い画面でも操作領域どうしの間に最低6pxを残す。
+        const size = Math.min(32, Math.max(1, cellSize + gapPx - 6));
+        let offset = 0;
+        controls.querySelectorAll(`[data-axis="${axis}"]`).forEach((button, index) => {
+            const gap = gaps[axis][index] * gapPx;
+            offset += cellSize + gap / 2;
+            const x = isColumn
+                ? (studentView ? gridRect.right - offset : gridRect.left + offset)
+                : (studentView ? pageRect.right + 18 : pageRect.left - 18);
+            const y = isColumn
+                ? (studentView ? pageRect.top - 18 : pageRect.bottom + 18)
+                : (studentView ? gridRect.top + offset : gridRect.bottom - offset);
+            button.style.left = `${x - shellRect.left}px`;
+            button.style.top = `${y - shellRect.top}px`;
+            button.style.width = `${isColumn ? size : 32}px`;
+            button.style.height = `${isColumn ? 32 : size}px`;
+            offset += gap / 2;
+        });
+    }
+    controls.style.visibility = 'visible';
+}
+
 function updatePrintToolbarInset() {
     const overlay = document.getElementById('print-overlay');
     if (!overlay || overlay.style.display === 'none') {
@@ -2947,7 +3044,7 @@ function updatePrintPreviewChromeLayout() {
     // A4 の通常 CSS px 幅を下限にする。side 判定だけは「自然A4を置けるか」で行う。
     const nominalA4Width = printOrientation === 'portrait' ? (190 * 96 / 25.4) : (277 * 96 / 25.4);
     const naturalWidth = Math.max(page.offsetWidth, nominalA4Width);
-    const previewWidthIfSide = window.innerWidth - 340 - 16 - 32;
+    const previewWidthIfSide = window.innerWidth - 340 - 16 - 32 - 36;
     const candidateScale = naturalWidth > 0 ? previewWidthIfSide / naturalWidth : 0;
     const side = Boolean(panel && !panel.hidden && window.matchMedia('(orientation: landscape)').matches && window.innerHeight >= 600 && candidateScale >= 0.78);
     document.body.classList.toggle('print-settings-side', side);
@@ -2964,13 +3061,14 @@ function applyPrintScreenScale() {
     resetPrintScreenScale();
     const naturalWidth = page.offsetWidth;
     const naturalHeight = page.offsetHeight;
-    const availableWidth = Math.max(1, root.clientWidth);
+    const availableWidth = Math.max(1, root.clientWidth - 36);
     const scale = Math.min(1, availableWidth / naturalWidth);
     page.style.transformOrigin = 'top left';
     page.style.transform = `scale(${scale})`;
     shell.style.width = `${naturalWidth * scale}px`;
     shell.style.height = `${naturalHeight * scale}px`;
     printScreenScale = scale;
+    positionPrintGapControls();
 }
 
 function restorePrintScreenState() {
@@ -3143,7 +3241,7 @@ function buildSeatContentHtml(student, cfg, forPrint = false) {
     return buildFixedSeatContentHtml(student, cfg, forPrint);
 }
 
-function renderPrintLayout() {
+function renderPrintLayout(focusGap = null) {
     const printRoot = document.getElementById('print-root');
     if (!printRoot) return;
     const generation = ++printRenderGeneration;
@@ -3165,11 +3263,14 @@ function renderPrintLayout() {
                     <div id="print-seat-grid" class="print-seat-grid"></div>
                 </div>
             </div>
+            <div class="print-gap-controls no-print" role="group" aria-label="座席間隔の調整"></div>
         </div>
     `;
     const grid = document.getElementById('print-seat-grid');
-    grid.style.gridTemplateColumns = `repeat(${visibleCols}, 1fr)`;
-    grid.style.gridTemplateRows = `repeat(${visibleRows}, 1fr)`;
+    const gaps = getVisiblePrintGaps(bounds);
+    grid.style.gridTemplateColumns = buildPrintGridTracks(gaps.columns);
+    grid.style.gridTemplateRows = buildPrintGridTracks(gaps.rows);
+    renderPrintGapControls(bounds);
 
     const showInactiveFrames = printInactiveMode === 'frame';
 
@@ -3183,8 +3284,8 @@ function renderPrintLayout() {
 
         const seatEl = document.createElement('div');
         seatEl.className = 'print-seat';
-        seatEl.style.gridColumn = String(col - bounds.currMinC + 1);
-        seatEl.style.gridRow = String(row - bounds.currMinR + 1);
+        seatEl.style.gridColumn = String((col - bounds.currMinC) * 2 + 1);
+        seatEl.style.gridRow = String((row - bounds.currMinR) * 2 + 1);
 
         if (isInactive) {
             seatEl.classList.add('print-seat-inactive');
@@ -3206,11 +3307,18 @@ function renderPrintLayout() {
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             if (generation !== printRenderGeneration || !document.body.classList.contains('print-mode')) return;
+            // 直前のresizeが予約した表示縮小が、新しいDOMに先に適用される場合も
+            // あるため、紙面の実寸へ戻してから寸法と教卓文字を計測する。
+            resetPrintScreenScale();
             fitPrintDeskClassName();
             fitPrintGridLayout(grid, visibleRows, visibleCols);
             fitAllPrintSeatsSync();
             updatePrintToolbarInset();
             updatePrintPreviewChromeLayout();
+            if (focusGap) requestAnimationFrame(() => {
+                if (generation !== printRenderGeneration) return;
+                printRoot.querySelector(`.print-gap-button[data-axis="${focusGap.axis}"][data-index="${focusGap.index}"]`)?.focus({ preventScroll: true });
+            });
         });
     });
 }
@@ -3255,17 +3363,17 @@ function fitPrintGridLayout(grid, rows, cols) {
     const desk = classroom ? classroom.querySelector('.print-desk') : null;
     if (!classroom || !desk) return;
 
-    const gridStyle = window.getComputedStyle(grid);
-    const gapX = parseFloat(gridStyle.columnGap) || 0;
-    const rowGap = parseFloat(gridStyle.rowGap);
-    // row-gap: 0 は有効値のため、横方向の gap で置き換えない。
-    const gapY = Number.isFinite(rowGap) ? rowGap : gapX;
-
+    const gaps = getVisiblePrintGaps();
+    const baseGapPx = 96 / 25.4;
+    const gapWidth = gaps.columns.reduce((sum, value) => sum + value, 0) * baseGapPx;
+    const gapHeight = gaps.rows.reduce((sum, value) => sum + value, 0) * baseGapPx;
     const classroomRect = classroom.getBoundingClientRect();
     const deskRect = desk.getBoundingClientRect();
     const classStyle = window.getComputedStyle(classroom);
+    const classroomGap = parseFloat(classStyle.rowGap);
+    const deskGap = Number.isFinite(classroomGap) ? classroomGap : baseGapPx;
     const availableW = Math.max(50, classroomRect.width - (parseFloat(classStyle.paddingLeft) || 0) - (parseFloat(classStyle.paddingRight) || 0));
-    const availableH = Math.max(50, classroomRect.height - deskRect.height - (parseFloat(classStyle.paddingTop) || 0) - (parseFloat(classStyle.paddingBottom) || 0) - gapY);
+    const availableH = Math.max(50, classroomRect.height - deskRect.height - (parseFloat(classStyle.paddingTop) || 0) - (parseFloat(classStyle.paddingBottom) || 0) - deskGap);
 
     if (printOrientation === 'portrait') {
         // A4縦は6列を基準に座席を幅:高さ=10:9とし、枠内の上下余白と
@@ -3273,34 +3381,32 @@ function fitPrintGridLayout(grid, rows, cols) {
         // 除いた高さも上限にするため、下側が印刷領域からはみ出さない。
         const fixedCols = NUM_COLS;
         const portraitSeatHeightRatio = 0.9;
-        const classroomGap = parseFloat(classStyle.rowGap);
-        const deskGap = Number.isFinite(classroomGap) ? classroomGap : gapY;
-        const maxCellWByWidth = (availableW - (fixedCols - 1) * gapX) / fixedCols;
-        const portraitAvailableH = availableH + gapY - deskGap;
-        const maxCellHByHeight = (portraitAvailableH - (rows - 1) * gapY) / rows;
+        const standardCellW = (availableW - (fixedCols - 1) * baseGapPx) / fixedCols;
+        const maxCellWByWidth = Math.min(standardCellW, (availableW - gapWidth) / cols);
+        const maxCellHByHeight = (availableH - gapHeight) / rows;
         const cellW = Math.max(1, Math.min(maxCellWByWidth, maxCellHByHeight / portraitSeatHeightRatio));
         const cellH = cellW * portraitSeatHeightRatio;
-        grid.style.width = `${cols * cellW + (cols - 1) * gapX}px`;
-        grid.style.height = `${rows * cellH + (rows - 1) * gapY}px`;
+        grid.style.width = `${cols * cellW + gapWidth}px`;
+        grid.style.height = `${rows * cellH + gapHeight}px`;
         return;
     }
 
     // A4横は従来の比率を保ち、教卓の高さを差し引いた領域へ収める。
-    const maxCellWByWidth = (availableW - (cols - 1) * gapX) / cols;
+    const maxCellWByWidth = (availableW - gapWidth) / cols;
     const seatHeightRatio = getLandscapeSeatHeightRatio(rows);
     let low = 1;
     let high = Math.max(1, maxCellWByWidth);
     for (let i = 0; i < 24; i++) {
         const mid = (low + high) / 2;
-        const gridH = rows * (mid * seatHeightRatio) + (rows - 1) * gapY;
+        const gridH = rows * (mid * seatHeightRatio) + gapHeight;
         if (gridH <= availableH) low = mid;
         else high = mid;
     }
 
     const cellW = Math.max(1, Math.min(low, maxCellWByWidth));
     const cellH = cellW * seatHeightRatio;
-    const gridW = cols * cellW + (cols - 1) * gapX;
-    const gridH = rows * cellH + (rows - 1) * gapY;
+    const gridW = cols * cellW + gapWidth;
+    const gridH = rows * cellH + gapHeight;
 
     grid.style.width = `${gridW}px`;
     grid.style.height = `${gridH}px`;
@@ -7417,7 +7523,8 @@ function saveCurrentClassData() {
         lastUsedShuffleSeed: lastUsedShuffleSeed,
         lastBackupAt: lastBackupAt,
         genderBorderData: appearance.genderBorderData,
-        printInactiveMode: printInactiveMode === 'frame' ? 'frame' : 'hide'
+        printInactiveMode: printInactiveMode === 'frame' ? 'frame' : 'hide',
+        printSeatGaps
     };
     localStorage.setItem(`${PREFIX}data_${appData.currentClassId}`, JSON.stringify(data));
 }
@@ -7438,6 +7545,7 @@ function loadCurrentClassData() {
     clearPendingHistoryShuffleMeta();
     pendingHistoryMemoOnCommit = null;
     lastBackupAt = '';
+    printSeatGaps = normalizePrintSeatGaps();
     setActionButtons(false, false);
     if (dataStr) {
         try {
@@ -7464,6 +7572,7 @@ function loadCurrentClassData() {
             syncClassScopedControlsFromGlobals();
             inactiveSeats = new Set(data.inactiveSeats || []); seatAssignment = data.assignment || new Array(TOTAL_SEATS).fill(null);
             printInactiveMode = data.printInactiveMode === 'frame' ? 'frame' : 'hide';
+            printSeatGaps = normalizePrintSeatGaps(data.printSeatGaps);
             lastUsedShuffleSeed = coerceStoredShuffleSeed(data.lastUsedShuffleSeed);
             lastBackupAt = typeof data.lastBackupAt === 'string' ? data.lastBackupAt : '';
             histories = (data.histories || []).map(h => ({

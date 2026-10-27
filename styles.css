@@ -1375,10 +1375,39 @@ body.print-mode #print-root {
 }
 body.print-mode .print-page-shell {
     display: inline-block;
+    position: relative;
+    box-sizing: content-box;
+    padding: 0 0 36px 36px;
     margin: 0 auto;
     vertical-align: top;
     text-align: left;
 }
+#print-root.student-view .print-page-shell { padding: 36px 36px 0 0; }
+.print-gap-controls { position: absolute; inset: 0; pointer-events: none; visibility: hidden; }
+.print-gap-button {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    pointer-events: auto;
+    transform: translate(-50%, -50%);
+    touch-action: manipulation;
+}
+.print-gap-button svg { width: 20px; height: 20px; flex: none; }
+.print-gap-button[data-multiplier="1.5"] { color: #2563eb; }
+.print-gap-button[data-multiplier="2"] { color: #1e40af; }
+.print-gap-button:hover,
+.print-gap-button:focus-visible { background: #fff; border-color: #2563eb; outline: 2px solid #93c5fd; outline-offset: 1px; }
+.print-gap-button[data-axis="rows"] svg { transform: rotate(90deg); }
+#print-root.student-view .print-gap-button[data-axis="columns"] svg { transform: rotate(180deg); }
+#print-root.student-view .print-gap-button[data-axis="rows"] svg { transform: rotate(-90deg); }
 body.print-mode.print-settings-side #print-preview-stage {
     grid-template-columns: minmax(0, 1fr) 340px;
     grid-template-areas: "preview settings";
@@ -1568,11 +1597,11 @@ body.print-orientation-portrait .print-classroom {
 .print-seat-grid {
     flex: 0 0 auto;
     display: grid;
-    gap: 1mm;
+    gap: 0;
     transform: scaleY(-1);
     margin: 0 auto;
 }
-/* A4縦も横と同じ1mmの座席間隔を保ち、左端を印刷領域から1.5mmにそろえる。 */
+/* A4縦も横と同じ座席間隔設定を使い、左端を印刷領域から1.5mmにそろえる。 */
 body.print-orientation-portrait .print-seat-grid {
     margin-left: 0;
     margin-right: 0;
@@ -1685,6 +1714,7 @@ body.print-orientation-portrait .print-seat-content .seat-fixed-text {
     body.print-mode .print-page-shell {
         width: auto !important;
         height: auto !important;
+        padding: 0 !important;
     }
 }
 @media (max-width: 599px) {

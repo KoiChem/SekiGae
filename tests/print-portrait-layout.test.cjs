@@ -17,6 +17,7 @@ function loadPrintGridLayout(orientation, computedStyles) {
         parseFloat,
         printOrientation: orientation,
         NUM_COLS: 6,
+        getVisiblePrintGaps: () => ({columns: [1,1,1,1,1], rows: [1,1,1,1,1,1]}),
         window: { getComputedStyle: element => computedStyles.get(element) }
     });
     vm.runInContext(appSource.slice(start, end), context);
