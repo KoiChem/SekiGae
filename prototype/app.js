@@ -2092,6 +2092,11 @@ function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily, textS
         const naturalPx = computeMaxFontPxByCanvas(text, sz.w, sz.h, ff, 'bold', lineHeight);
         const finalPx = Math.max(SEAT_FIT_EPS_PX, Math.min(naturalPx, hiPx));
         textEl.style.fontSize = `${finalPx}px`;
+        let fittedPx = finalPx;
+        for (let attempt=0; attempt<40 && textEl.scrollWidth>textEl.clientWidth; attempt++) {
+            fittedPx *= .95;
+            textEl.style.fontSize = `${fittedPx}px`;
+        }
     });
 }
 
