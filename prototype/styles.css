@@ -1824,3 +1824,7 @@ body.ui-layout-portrait #tab-main > .classroom-wrapper { flex-direction:column; 
 .classroom-wrapper .desk-row { order:2; }
 .classroom-wrapper.student-view .desk-row { order:0; }
 #seat-grid .seat-fixed-text { word-break:break-all; }
+
+/* 各項目は一行を維持し、実測した枠内へ文字サイズを合わせる。 */
+#seat-grid .seat-fixed-text { white-space:nowrap; overflow-wrap:normal; word-break:normal; }
+#seat-grid .seat-fixed-row { flex:1 1 0; }

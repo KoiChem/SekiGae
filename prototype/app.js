@@ -2083,7 +2083,7 @@ function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily, textS
         const key = row.getAttribute('data-row-key');
         const textEl = row.querySelector('.seat-fixed-text');
         if (!textEl) return;
-        const sz = (rowSizeByKey && rowSizeByKey[key]) || getRowContentBox(row);
+        const sz = getRowContentBox(row);
         if (!sz || sz.w <= 0 || sz.h <= 0) return;
 
         const hiPx = computeRowHiPx(key, globalNRef) * Math.max(SEAT_FIT_EPS_PX, Number.isFinite(textScale) ? textScale : 1);
@@ -6310,44 +6310,24 @@ function renderAssignments() {
 }
 
 function autoFitText() {
-    document.querySelectorAll('#seat-grid .seat-content').forEach(el => el.classList.remove('is-fitted'));
+    document.querySelectorAll('.seat-content').forEach(el => el.classList.remove('is-fitted'));
     requestAnimationFrame(() => {
         const grid = document.getElementById('seat-grid');
-        if (!grid || !grid.clientWidth) return;
+        if (!grid) return;
         grid.style.removeProperty('height');grid.style.removeProperty('flex');
-        const classroom = document.getElementById('classroom');
-        classroom?.classList.remove('screen-print-aspect');
-        const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
-        const columnWidth = Math.max(20, (grid.clientWidth - (NUM_COLS - 1) * gap) / NUM_COLS - 14);
-        const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
-        const rows = [...grid.querySelectorAll('.seat-content .seat-fixed-row')];
-        const width = Math.max(20,Math.min(columnWidth,...rows.map(row=>getRowContentBox(row).w).filter(w=>w>0)));
-        const measure = namePx => {
-            const sizes={id:Math.max(11,namePx*.45),kana:Math.max(11,namePx*.55),name:namePx,attr1:Math.max(11,namePx*.45),attr2:Math.max(11,namePx*.45)};
-            const heights={};
-            rows.forEach(row=>{
-                const key=row.dataset.rowKey,text=row.querySelector('.seat-fixed-text');
-                if (!text) return;
-                const px=sizes[key] || 11;
-                ctx.font=`bold ${px}px ${getComputedStyle(text).fontFamily}`;
-                const lines=Math.max(1,Math.ceil(ctx.measureText(text.textContent || '').width / Math.max(1,width-3)));
-                heights[key]=Math.max(heights[key]||0,Math.ceil(lines*px*1.15)+2);
+        document.querySelectorAll('#seat-grid .seat-fixed-row').forEach(row=>row.style.removeProperty('height'));
+        const width = grid.clientWidth / NUM_COLS;
+        document.documentElement.style.setProperty('--seat-min-height', `${Math.max(76,Math.min(130,width*.72))}px`);
+        requestAnimationFrame(() => {
+            const nRef = computeMainGridNameRefPx();
+            const rowSizes = sampleRowSizesByKey('#seat-grid .seat-content');
+            const sample = document.querySelector('#seat-grid .seat-content');
+            const fontFamily = sample ? getComputedStyle(sample).fontFamily : null;
+            const lineHeight = getMainSeatRowLineHeight();
+            document.querySelectorAll('.seat-content').forEach(el => {
+                fitFixedSeatRows(el, nRef, rowSizes, fontFamily, 1, lineHeight);
+                el.classList.add('is-fitted');
             });
-            return {sizes,heights,height:Math.max(76,Object.values(heights).reduce((a,b)=>a+b,0)+14)};
-        };
-        const desk=classroom?.querySelector('.desk-row');
-        const available=classroom ? (document.body.classList.contains('ui-layout-landscape') ? classroom.clientHeight : Math.max(0,innerHeight-classroom.getBoundingClientRect().top-20)) : 0;
-        const targetHeight=Math.max(0,(available-(desk?.getBoundingClientRect().height || 40)-32-(NUM_ROWS-1)*gap)/NUM_ROWS);
-        let namePx=Math.max(16,Math.min(31.5,width/5)), metrics=measure(namePx);
-        while (namePx>16 && metrics.height>targetHeight) {namePx=Math.max(16,namePx-1);metrics=measure(namePx);}
-        const {sizes,heights}=metrics;
-        rows.forEach(row=>{const text=row.querySelector('.seat-fixed-text');if(text) text.style.fontSize=`${sizes[row.dataset.rowKey] || 11}px`;});
-        rows.forEach(row => { row.style.height=`${heights[row.dataset.rowKey] || 16}px`; });
-        const minHeight=Math.max(76,Object.values(heights).reduce((a,b)=>a+b,0)+14);
-        document.documentElement.style.setProperty('--seat-min-height',`${minHeight}px`);
-        requestAnimationFrame(()=>{
-            document.querySelectorAll('#seat-grid .seat-content').forEach(el=>el.classList.add('is-fitted'));
-            scheduleFitDeskClassName();
         });
     });
 }
