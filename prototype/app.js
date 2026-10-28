@@ -2086,6 +2086,10 @@ function fitFixedSeatRows(contentEl, globalNRef, rowSizeByKey, fontFamily, textS
         const sz = getRowContentBox(row);
         if (!sz || sz.w <= 0 || sz.h <= 0) return;
 
+        if (contentEl.classList.contains('seat-content')) {
+            fitMainSeatText(textEl, row);
+            return;
+        }
         const hiPx = computeRowHiPx(key, globalNRef) * Math.max(SEAT_FIT_EPS_PX, Number.isFinite(textScale) ? textScale : 1);
         const text = textEl.textContent || '';
         const ff = getComputedStyle(textEl).fontFamily || fontFamily || getComputedStyle(contentEl).fontFamily;
@@ -8346,4 +8350,24 @@ function historyMatchesCurrentBoard(history) {
 
 function getPairTrackHistoryList() {
     return !previewAssignment && histories[0] && historyMatchesCurrentBoard(histories[0]) ? histories.slice(1) : histories;
+}
+
+// 実際の書体・行間による一行の文字領域を、親行の領域と比較する。
+function fitMainSeatText(text, row) {
+    const cs=getComputedStyle(text), rs=getComputedStyle(row), box=row.getBoundingClientRect();
+    const width=box.width-(parseFloat(rs.paddingLeft)||0)-(parseFloat(rs.paddingRight)||0)-1;
+    const height=box.height-(parseFloat(rs.paddingTop)||0)-(parseFloat(rs.paddingBottom)||0)-1;
+    const probe=text.cloneNode(true);
+    Object.assign(probe.style,{position:'fixed',left:'-10000px',top:'0',display:'inline-block',width:'max-content',maxWidth:'none',height:'auto',margin:'0',padding:'0',border:'0',visibility:'hidden',whiteSpace:'nowrap',overflow:'visible',fontFamily:cs.fontFamily,fontWeight:cs.fontWeight,fontStyle:cs.fontStyle,letterSpacing:cs.letterSpacing,wordSpacing:cs.wordSpacing,lineHeight:'1.15',transform:'none'});
+    document.body.appendChild(probe);
+    const range=document.createRange();range.selectNodeContents(probe);
+    let low=0, high=Math.max(1,height);
+    for(let i=0;i<16;i++) {
+        const mid=(low+high)/2;probe.style.fontSize=mid+'px';
+        const line=probe.getBoundingClientRect(), glyph=range.getBoundingClientRect();
+        if(Math.max(line.width,glyph.width)<=width && Math.max(line.height,glyph.height)<=height)low=mid;
+        else high=mid;
+    }
+    text.style.fontSize=Math.max(.25,Math.floor(low*4)/4)+'px';
+    probe.remove();
 }

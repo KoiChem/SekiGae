@@ -1828,3 +1828,10 @@ body.ui-layout-portrait #tab-main > .classroom-wrapper { flex-direction:column; 
 /* 各項目は一行を維持し、実測した枠内へ文字サイズを合わせる。 */
 #seat-grid .seat-fixed-text { white-space:nowrap; overflow-wrap:normal; word-break:normal; }
 #seat-grid .seat-fixed-row { flex:1 1 0; }
+
+/* 氏名を広く取り、補助項目にも独立した表示領域を確保する。 */
+#seat-grid .seat-fixed-row[data-row-key="id"],
+#seat-grid .seat-fixed-row[data-row-key="attr1"],
+#seat-grid .seat-fixed-row[data-row-key="attr2"] { flex:.8 1 0; }
+#seat-grid .seat-fixed-row[data-row-key="kana"] { flex:1 1 0; }
+#seat-grid .seat-fixed-row[data-row-key="name"] { flex:2 1 0; }
