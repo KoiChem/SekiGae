@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae 試作版</title>
-<link rel="stylesheet" href="styles.css?v=20261029-max-fit-v3">
+<link rel="stylesheet" href="styles.css?v=20261029-portrait-controls-v4">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -341,7 +341,21 @@
 </div>
 
 <div id="tab-main" class="tab-content active">
-    <div id="alert-box"></div>
+
+    <div id="preview-points-legend" class="preview-points-legend no-print" hidden>金枠の席は、今回の配置調整で優先ルールのポイントが残っている生徒です。</div>
+
+    <div class="classroom-wrapper" id="classroom">
+        <div class="desk-row">
+            <div class="desk-row-inner" id="desk-row-inner">
+                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-min" onclick="cycleEdgeAttr('min')" title="教卓から見て左端列の属性">廊下</button>
+                <div class="desk-teacher" id="desk-class-title">
+                    <span id="class-name-in-desk" class="class-name-in-desk-text"></span>
+                </div>
+                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-max" onclick="cycleEdgeAttr('max')" title="教卓から見て右端列の属性">窓</button>
+            </div>
+        </div>
+        <div class="seat-grid" id="seat-grid"></div>
+    </div>
 
     <div class="action-bar no-print">
         <div class="action-bar-top">
@@ -378,24 +392,43 @@
         </div>
     </div>
 
-    <div id="preview-points-legend" class="preview-points-legend no-print" hidden>金枠の席は、今回の配置調整で優先ルールのポイントが残っている生徒です。</div>
-
-    <div class="classroom-wrapper" id="classroom">
-        <div class="desk-row">
-            <div class="desk-row-inner" id="desk-row-inner">
-                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-min" onclick="cycleEdgeAttr('min')" title="教卓から見て左端列の属性">廊下</button>
-                <div class="desk-teacher" id="desk-class-title">
-                    <span id="class-name-in-desk" class="class-name-in-desk-text"></span>
-                </div>
-                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-max" onclick="cycleEdgeAttr('max')" title="教卓から見て右端列の属性">窓</button>
-            </div>
-        </div>
-        <div class="seat-grid" id="seat-grid"></div>
-    </div>
-
+    <div id="alert-box"></div>
     <div class="settings-bottom no-print" id="settings-bottom">
         <div class="settings-status-slot" id="settings-status-slot"></div>
         <div class="settings-action-slot" id="settings-action-slot"></div>
+        <div class="panel">
+            <h2>データ・履歴管理</h2>
+            <div class="history-management-block">
+                <label for="history-memo-input" class="history-management-label">配置名（選択中の履歴）</label>
+                <div class="flex-row history-management-row">
+                    <input type="text" id="history-memo-input" maxlength="10" placeholder="配置名（全角10文字まで）" style="flex-grow:1;">
+                    <button class="btn btn-outline" onclick="saveHistoryMemo()">名前を保存</button>
+                </div>
+            </div>
+            <div class="history-management-block">
+            <label for="history-select" class="history-management-label">過去の配置を盤面に復元</label>
+            <div class="flex-row history-management-row">
+                <select id="history-select"></select>
+                <button class="btn btn-danger" style="padding: 8px 10px;" onclick="deleteSelectedHistory()" title="選択した履歴を削除">削除</button>
+            </div>
+            <div class="flex-row history-extra-actions">
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="exportHistoryLastTwoDigitsToClipboard()" title="履歴を選んだときはその配置。未選択時は現在の盤面（確定／プレビュー）。教員視点固定（教卓が下）で、7×6 の座席表形式（1席=1セル）でコピー">外部座席表用・番号コピー</button>
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して、確認後に履歴へ保存します">Excelの座席表を取り込む</button>
+            </div>
+            </div>
+            <p class="local-data-note">通常版の名簿・履歴・設定は、この端末のこのブラウザ内に保存されます。入力した名簿を外部へ送信せず、別の端末・ブラウザにも自動共有されません。定期的にバックアップを保存してください。</p>
+            <div class="backup-actions">
+                <button class="btn btn-outline" style="font-size:0.85em;" onclick="openExportBackupModal()">バックアップ保存</button>
+                <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
+            </div>
+            <p id="backup-status" class="backup-status">最終バックアップ: —</p>
+            <hr class="history-danger-divider">
+            <div class="history-danger-actions">
+                <button class="btn btn-danger history-reset-button" onclick="clearAllHistories()">クラス履歴リセット</button>
+                <button class="btn btn-danger history-reset-button history-delete-all-button" onclick="openDeleteAllDataFlow()">全データ削除</button>
+            </div>
+        </div>
         <div class="panel">
             <div class="flex-row" style="justify-content: space-between; border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 8px;">
                 <h2 style="border:none; margin:0; width:auto;">座席内レイアウト設定</h2>
@@ -448,40 +481,6 @@
                 </div>
             </div>
 
-        </div>
-
-        <div class="panel">
-            <h2>データ・履歴管理</h2>
-            <div class="history-management-block">
-                <label for="history-memo-input" class="history-management-label">配置名（選択中の履歴）</label>
-                <div class="flex-row history-management-row">
-                    <input type="text" id="history-memo-input" maxlength="10" placeholder="配置名（全角10文字まで）" style="flex-grow:1;">
-                    <button class="btn btn-outline" onclick="saveHistoryMemo()">名前を保存</button>
-                </div>
-            </div>
-            <div class="history-management-block">
-            <label for="history-select" class="history-management-label">過去の配置を盤面に復元</label>
-            <div class="flex-row history-management-row">
-                <select id="history-select"></select>
-                <button class="btn btn-danger" style="padding: 8px 10px;" onclick="deleteSelectedHistory()" title="選択した履歴を削除">削除</button>
-            </div>
-            <div class="flex-row history-extra-actions">
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="exportHistoryLastTwoDigitsToClipboard()" title="履歴を選んだときはその配置。未選択時は現在の盤面（確定／プレビュー）。教員視点固定（教卓が下）で、7×6 の座席表形式（1席=1セル）でコピー">外部座席表用・番号コピー</button>
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して、確認後に履歴へ保存します">Excelの座席表を取り込む</button>
-            </div>
-            </div>
-            <p class="local-data-note">通常版の名簿・履歴・設定は、この端末のこのブラウザ内に保存されます。入力した名簿を外部へ送信せず、別の端末・ブラウザにも自動共有されません。定期的にバックアップを保存してください。</p>
-            <div class="backup-actions">
-                <button class="btn btn-outline" style="font-size:0.85em;" onclick="openExportBackupModal()">バックアップ保存</button>
-                <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
-            </div>
-            <p id="backup-status" class="backup-status">最終バックアップ: —</p>
-            <hr class="history-danger-divider">
-            <div class="history-danger-actions">
-                <button class="btn btn-danger history-reset-button" onclick="clearAllHistories()">クラス履歴リセット</button>
-                <button class="btn btn-danger history-reset-button history-delete-all-button" onclick="openDeleteAllDataFlow()">全データ削除</button>
-            </div>
         </div>
     </div>
 </div>
@@ -693,7 +692,7 @@
     </div>
 </div>
 
-<script src="app.js?v=20261029-max-fit-v3"></script>
+<script src="app.js?v=20261029-portrait-controls-v4"></script>
 <dialog id="app-dialog" class="app-dialog" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
     <h2 id="app-dialog-title">確認</h2><p id="app-dialog-message"></p>
     <div class="app-dialog-actions"><button type="button" class="btn btn-outline" id="app-dialog-cancel">キャンセル</button><button type="button" class="btn" id="app-dialog-ok">OK</button></div>

@@ -1835,3 +1835,13 @@ body.ui-layout-portrait #tab-main > .classroom-wrapper { flex-direction:column; 
 #seat-grid .seat-fixed-row[data-row-key="attr2"] { flex:.8 1 0; }
 #seat-grid .seat-fixed-row[data-row-key="kana"] { flex:1 1 0; }
 #seat-grid .seat-fixed-row[data-row-key="name"] { flex:2 1 0; }
+
+/* 縦画面: 座席、操作、データ管理の順で操作を完結させる。 */
+body.ui-layout-portrait #tab-main > .classroom-wrapper { order:1; }
+body.ui-layout-portrait #tab-main > .action-bar { order:2; margin:12px 0 8px; }
+body.ui-layout-portrait #tab-main > #alert-box { order:3; }
+body.ui-layout-portrait #tab-main > .preview-points-legend { order:0; }
+body.ui-layout-portrait #tab-main > .settings-bottom { order:5; margin-top:8px; }
+body.ui-layout-portrait #btn-commit.is-action-hidden,
+body.ui-layout-portrait #btn-cancel-preview.is-action-hidden { visibility:visible; }
+body.ui-layout-portrait .preview-action-buttons.is-action-group-empty { display:contents; }

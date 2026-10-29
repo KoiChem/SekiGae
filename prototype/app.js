@@ -1629,6 +1629,8 @@ document.addEventListener('visibilitychange', () => {
 
 
 function setActionButtons(commitVisible, logVisible) {
+    document.getElementById('history-memo-input').disabled = commitVisible;
+    document.querySelector('button[onclick="saveHistoryMemo()"]').disabled = commitVisible;
     setPreviewActionButtonVisibility('btn-commit', commitVisible);
     setPreviewActionButtonVisibility('btn-cancel-preview', commitVisible);
     setPreviewActionButtonVisibility('btn-show-log', logVisible);
@@ -1640,6 +1642,7 @@ function setPreviewActionButtonVisibility(id, visible) {
     const button = document.getElementById(id);
     if (!button) return;
     button.classList.toggle('is-action-hidden', !visible);
+    button.disabled = !visible;
     button.tabIndex = visible ? 0 : -1;
     syncPreviewActionButtonsVisibility();
 }
@@ -6402,6 +6405,7 @@ function commitSeats() {
     if (shuffleMeta) Object.assign(historyEntry, shuffleMeta);
     histories.unshift(historyEntry);
     if(histories.length > 20) histories.pop();
+    document.getElementById('history-select').value = '';
     saveCurrentClassData(); updateHistorySelect(); renderAssignments(); showAlert("座席を確定し、履歴に保存しました。", "success");
 }
 
