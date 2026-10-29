@@ -134,7 +134,7 @@ function createShuffleRandomStreams(seed) {
 // --- 定数・システム管理 ---
 const SAMPLE_MODE = new URLSearchParams(window.location.search).get('sample') === '1';
 const PREFIX = SAMPLE_MODE ? 'SekiGaeTrial_sample_v1_' : 'SekiGaeTrial_v1_';
-const SAMPLE_BACKUP_URL = '../meibo_sample.json';
+const SAMPLE_BACKUP_URL = './meibo_sample.json';
 /** クラス・バックアップとは独立した、この端末での画面表示の好み。 */
 const UI_LAYOUT_STORAGE_KEY = `${PREFIX}ui_layout`;
 let NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
