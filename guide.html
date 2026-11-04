@@ -129,9 +129,14 @@
       <h2><span class="step-no">2</span>座席を用意する</h2>
       <p><span class="ui">座席表・設定</span> タブの座席表は <strong>6列 × 7行 = 42席</strong> です。画面の下側が教卓側で、<span class="ui">廊下</span> と <span class="ui">窓</span> の表示で教室の向きを確認できます。</p>
       <ul>
-        <li>教室の机の並びに合わせて、<strong>使わない席はクリックすると空席</strong>になります（もう一度クリックすると元に戻ります）。空席は配置の対象から外れます。</li>
-        <li>有効な席数は、右側の <span class="ui">座席 ○席</span> の表示で確認できます。クラスの人数以上あれば大丈夫です。</li>
+        <li><strong>使わない席は、タップ（クリック）すると非アクティブ（空席）になります。</strong>もう一度タップすると再びアクティブに戻ります。空席は配置の対象から外れます。</li>
+        <li>有効な席数は、右側の <span class="ui">座席 ○席</span> の表示で確認できます。生徒数と座席数をぴったり合わせておくと、配置が分かりやすくなります。</li>
       </ul>
+      <p>例として、38名のクラスでは、最後列（教卓から一番遠い列）の左端2席と右端2席、合わせて4席を非アクティブにして、座席数を38席に合わせます。</p>
+      <figure>
+        <img src="guide-img/seats.jpg" alt="最後列の両端4席を非アクティブにした座席表" loading="lazy">
+        <figcaption>最後列の両端4席を非アクティブにした状態。非アクティブの席は座標（a7など）が表示されず、空白になる</figcaption>
+      </figure>
       <div class="note">
         <strong>42名を超えるクラスや、列数・行数を変えたい場合：</strong>座席レイアウトを変更できる<a href="https://koichem.github.io/SekiGae/prototype/">試作版</a>（最大80名まで対応）があります。
       </div>
@@ -153,7 +158,7 @@
       </figure>
       <figure>
         <img src="guide-img/seiretsu-result.jpg" alt="整列で番号順に配置された座席表" loading="lazy">
-        <figcaption>整列の結果。教卓側の左端（左下）から番号順に埋まっている</figcaption>
+        <figcaption>整列の結果（38名）。教卓側の左端（左下）から番号順に埋まり、空席にした最後列の4席はスキップされている</figcaption>
       </figure>
 
       <h3>市松 ― 男女が市松模様になるように並べる</h3>
@@ -164,11 +169,15 @@
       </figure>
       <figure>
         <img src="guide-img/ichimatsu-result.jpg" alt="市松で配置された座席表" loading="lazy">
-        <figcaption>市松の結果。男女が交互のマス目に配置される（色分けは次のステップで設定した状態）</figcaption>
+        <figcaption>市松の結果（38名）。男女が交互のマス目に入り、有効な38席すべてが埋まっている</figcaption>
       </figure>
 
       <h3>シャッフル ― ランダムに並べる</h3>
       <p><span class="ui">シャッフル</span> を押すだけで、ランダムな配置が作られます。押すたびに新しい候補が追加され、<span class="ui">前の候補</span> / <span class="ui">次の候補</span> で行き来して見比べられます（候補の数は <span class="ui">最新 / ○件</span> のように表示されます）。</p>
+      <figure>
+        <img src="guide-img/shuffle-result.jpg" alt="シャッフルで配置された座席表" loading="lazy">
+        <figcaption>シャッフルの結果（38名）。押すたびに別の並びになる</figcaption>
+      </figure>
 
       <h3>決まったら確定する</h3>
       <ul>
@@ -182,20 +191,20 @@
       <p>座席に男女の色枠を付けると、座席表が見やすくなります。右側パネルの <span class="ui">色設定</span> の下にある <span class="ui">色分け</span> の設定を使います。</p>
       <figure class="small">
         <img src="guide-img/color-settings.jpg" alt="色設定と色分けの設定" loading="lazy">
-        <figcaption>色設定（1〜6の色）と色分けの設定。色分けの「OFF」を押して「ON」にする</figcaption>
+        <figcaption>色設定（1〜6の色）と色分けの設定。色分けと「塗り」をどちらもONにした状態</figcaption>
       </figure>
       <ol>
         <li><span class="ui">色分け</span> の横の <span class="ui">OFF</span> を押して <span class="ui">ON</span> にします。</li>
         <li><span class="ui">男</span> と <span class="ui">女</span> の欄で、それぞれ色の番号（色設定の1〜6）を選びます。</li>
-        <li>線の種類は <span class="ui">通常</span> / <span class="ui">太線</span> / <span class="ui">二重線</span> から選べます。</li>
+        <li>さらに <span class="ui">塗り</span> の <span class="ui">OFF</span> を押して <span class="ui">ON</span> にすると、枠線だけでなく座席全体に淡く色が付きます。</li>
+        <li>枠線の種類は <span class="ui">通常</span> / <span class="ui">太線</span> / <span class="ui">二重線</span> から選べます。</li>
       </ol>
       <ul>
         <li>色そのものを変えたいときは、<span class="ui">色設定</span> の番号ボタンを押すとパレットが開き、色を選べます。</li>
-        <li><span class="ui">塗り</span> を ON にすると、枠線ではなく座席全体に色が付きます。</li>
       </ul>
       <figure>
-        <img src="guide-img/colored-result.jpg" alt="色分けをONにした座席表" loading="lazy">
-        <figcaption>色分けONの座席表。この例では男＝6番（ピンク）、女＝5番（ティール）の枠線</figcaption>
+        <img src="guide-img/colored-result.jpg" alt="色分けと「塗り」をONにした座席表" loading="lazy">
+        <figcaption>色分けと「塗り」をONにした座席表（シャッフルの配置例）。この例では男＝6番（ピンク）、女＝5番（ティール）</figcaption>
       </figure>
     </section>
 
