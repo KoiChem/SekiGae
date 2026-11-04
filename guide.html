@@ -3,590 +3,238 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="SekiGaeの使い方。名簿の貼り付け、座席数の調整、条件付きシャッフル、視点の切り替え、印刷までを説明します。">
-<title>せきがえくんガイド</title>
+<title>SekiGae 使い方ガイド | 初めての座席替え</title>
+<meta name="description" content="教室の座席替えアプリSekiGaeの使い方ガイド。名簿のコピペから、番号順・市松・シャッフルの配置、男女の色分け、印刷までを順番に説明します。">
 <style>
-:root {
-    --guide-primary: #2c3e50;
-    --guide-secondary: #34495e;
-    --guide-accent: #3498db;
-    --guide-accent-dark: #1d6fa5;
-    --guide-green: #1f7a3a;
-    --guide-bg: #eef2f5;
-    --guide-card: #ffffff;
-    --guide-ink: #203040;
-    --guide-muted: #607080;
-    --guide-line: #d8e0e7;
-    --guide-soft-blue: #eaf5fc;
-    --guide-soft-green: #edf8f0;
-    --guide-soft-orange: #fff5e7;
-    --guide-shadow: 0 8px 24px rgba(32, 48, 64, 0.08);
-}
-
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-    margin: 0;
-    color: var(--guide-ink);
-    background: var(--guide-bg);
-    font-family: 'BIZ UDPGothic', 'Yu Gothic UI', 'Yu Gothic', 'Meiryo', sans-serif;
-    line-height: 1.75;
-}
-a { color: var(--guide-accent-dark); }
-a:hover { color: var(--guide-primary); }
-code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace; }
-
-.guide-header {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    background: rgba(52, 73, 94, 0.97);
-    box-shadow: 0 2px 10px rgba(25, 39, 52, 0.15);
-}
-.guide-nav {
-    width: min(1120px, calc(100% - 32px));
-    min-height: 58px;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-}
-.guide-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    color: #fff;
-    text-decoration: none;
-    font-weight: 700;
-    white-space: nowrap;
-}
-.guide-brand:hover { color: #fff; }
-.brand-mark {
-    display: inline-grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    color: var(--guide-primary);
-    background: #fff;
-    font-size: 0.84rem;
-    font-weight: 900;
-}
-.guide-brand small {
-    margin-left: 3px;
-    color: #cbd8e3;
-    font-size: 0.68rem;
-    letter-spacing: 0.08em;
-}
-.guide-header-links {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    overflow-x: auto;
-    scrollbar-width: none;
-}
-.guide-header-links::-webkit-scrollbar { display: none; }
-.guide-header-links a {
-    padding: 8px 10px;
-    color: #eaf2f8;
-    text-decoration: none;
-    font-size: 0.82rem;
-    white-space: nowrap;
-    border-radius: 5px;
-}
-.guide-header-links a:hover { background: rgba(255, 255, 255, 0.13); color: #fff; }
-
-.guide-main { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
-.guide-hero {
-    display: block;
-    margin: 34px 0 24px;
-    padding: clamp(28px, 5vw, 58px);
-    color: #fff;
-    background:
-        radial-gradient(circle at 100% 0%, rgba(52, 152, 219, 0.4), transparent 42%),
-        linear-gradient(135deg, #263b4d 0%, #34495e 62%, #2c3e50 100%);
-    border-radius: 18px;
-    box-shadow: 0 14px 30px rgba(32, 48, 64, 0.18);
-}
-.guide-eyebrow {
-    margin: 0 0 8px;
-    color: #a9dcfb;
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-}
-.guide-hero h1 {
-    margin: 0;
-    font-size: clamp(1.9rem, 4vw, 3.25rem);
-    line-height: 1.25;
-    letter-spacing: 0.02em;
-}
-.guide-hero-lead {
-    max-width: 640px;
-    margin: 20px 0 0;
-    color: #e2ebf2;
-    font-size: clamp(1rem, 1.8vw, 1.15rem);
-}
-.guide-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
-.guide-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    padding: 9px 17px;
-    border: 1px solid transparent;
-    border-radius: 7px;
-    font-weight: 700;
-    text-decoration: none;
-    transition: transform 0.15s ease, background 0.15s ease;
-}
-.guide-btn:hover { color: inherit; transform: translateY(-1px); }
-.guide-btn-primary { color: #fff; background: var(--guide-accent); }
-.guide-btn-primary:hover { color: #fff; background: #2589c9; }
-.guide-btn-light { color: #eaf2f8; border-color: rgba(255, 255, 255, 0.6); background: transparent; }
-.guide-btn-light:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
-.hero-privacy {
-    margin: 22px 0 0;
-    color: #cbd8e3;
-    font-size: 0.82rem;
-}
-.hero-privacy strong { color: #fff; }
-
-.guide-section {
-    scroll-margin-top: 78px;
-    margin: 28px 0 52px;
-}
-.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
-.section-kicker { margin: 0 0 3px; color: var(--guide-accent-dark); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.1em; }
-.guide-section h2 { margin: 0; color: var(--guide-primary); font-size: clamp(1.55rem, 3vw, 2.15rem); line-height: 1.3; }
-.section-intro { max-width: 690px; margin: 0 0 22px; color: var(--guide-muted); }
-.section-tip { flex: 0 0 auto; max-width: 310px; padding: 9px 13px; color: #36586d; background: var(--guide-soft-blue); border-left: 4px solid var(--guide-accent); border-radius: 6px; font-size: 0.82rem; }
-
-.step-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 0; margin: 0; list-style: none; counter-reset: guide-step; }
-.step-card {
-    position: relative;
-    display: grid;
-    grid-template-columns: 48px 1fr;
-    gap: 14px;
-    min-height: 184px;
-    padding: 20px;
-    background: var(--guide-card);
-    border: 1px solid var(--guide-line);
-    border-radius: 12px;
-    box-shadow: var(--guide-shadow);
-}
-.step-card:first-child { border-color: #9ed1ae; box-shadow: 0 8px 24px rgba(31, 122, 58, 0.11); }
-.step-number {
-    display: grid;
-    place-items: center;
-    width: 42px;
-    height: 42px;
-    color: #fff;
-    background: var(--guide-primary);
-    border-radius: 12px;
-    font-size: 1.15rem;
-    font-weight: 900;
-}
-.step-card:first-child .step-number { background: var(--guide-green); }
-.step-card h3 { margin: 0 0 7px; color: var(--guide-primary); font-size: 1.05rem; line-height: 1.4; }
-.step-card p { margin: 0; color: var(--guide-muted); font-size: 0.9rem; }
-.step-tag { display: inline-block; margin: 0 0 6px; padding: 2px 7px; color: #246237; background: #e6f5e9; border-radius: 999px; font-size: 0.68rem; font-weight: 800; }
-.step-card code, .feature-card code, .callout code { padding: 1px 4px; color: #24536c; background: #edf4f8; border-radius: 3px; font-size: 0.9em; }
-
-.quick-note, .callout {
-    margin-top: 16px;
-    padding: 14px 16px;
-    border-radius: 9px;
-    font-size: 0.9rem;
-}
-.quick-note { color: #4d4a2a; background: var(--guide-soft-orange); border-left: 4px solid #e6a23c; }
-.callout { color: #32545f; background: var(--guide-soft-blue); border-left: 4px solid var(--guide-accent); }
-.callout strong, .quick-note strong { color: var(--guide-primary); }
-
-.subsection-title { margin: 34px 0 13px; color: var(--guide-primary); font-size: 1.35rem; }
-.method-grid, .feature-grid, .reference-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.method-card, .feature-card, .reference-card {
-    padding: 19px;
-    background: var(--guide-card);
-    border: 1px solid var(--guide-line);
-    border-radius: 11px;
-    box-shadow: var(--guide-shadow);
-}
-.method-card { border-top: 4px solid var(--guide-accent); }
-.method-card:nth-child(2) { border-top-color: #4b8f6b; }
-.method-card:nth-child(3) { border-top-color: #8b7ab8; }
-.card-label { margin: 0 0 6px; color: var(--guide-accent-dark); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.07em; }
-.method-card h3, .feature-card h3, .reference-card h3 { margin: 0 0 7px; color: var(--guide-primary); font-size: 1rem; line-height: 1.4; }
-.method-card p, .feature-card p, .reference-card p { margin: 0; color: var(--guide-muted); font-size: 0.86rem; }
-.method-card ul, .feature-card ul, .reference-card ul { margin: 9px 0 0; padding-left: 1.25em; color: var(--guide-muted); font-size: 0.84rem; }
-.method-card li, .feature-card li, .reference-card li { margin: 2px 0; }
-
-.feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.feature-card { min-height: 180px; }
-.feature-card .feature-icon {
-    display: inline-grid;
-    place-items: center;
-    width: 34px;
-    height: 34px;
-    margin-bottom: 8px;
-    color: var(--guide-accent-dark);
-    background: var(--guide-soft-blue);
-    border-radius: 9px;
-    font-weight: 900;
-}
-.feature-card:nth-child(2) .feature-icon { color: #287045; background: var(--guide-soft-green); }
-.feature-card:nth-child(3) .feature-icon { color: #a36a1f; background: var(--guide-soft-orange); }
-.feature-card:nth-child(4) .feature-icon { color: #694e9d; background: #f1edfb; }
-.feature-card:nth-child(5) .feature-icon { color: #287045; background: var(--guide-soft-green); }
-.feature-card:nth-child(6) .feature-icon { color: #a36a1f; background: var(--guide-soft-orange); }
-
-.reference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.reference-card { min-height: 180px; }
-.reference-card--required { border-top: 4px solid #c74a4a; }
-.reference-card--priority { border-top: 4px solid #d69b34; }
-.reference-card--required h3 { color: #a53a3a; }
-.reference-card--priority h3 { color: #9a6817; }
-.rule-table-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--guide-line); border-radius: 10px; box-shadow: var(--guide-shadow); }
-.rule-table { width: 100%; min-width: 650px; border-collapse: collapse; font-size: 0.86rem; }
-.rule-table th, .rule-table td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--guide-line); }
-.rule-table th { color: var(--guide-primary); background: #f5f8fa; font-size: 0.78rem; }
-.rule-table tr:last-child td { border-bottom: 0; }
-.rule-table code { color: #24536c; font-size: 0.9em; white-space: nowrap; }
-.rule-example-list { display: grid; gap: 8px; }
-.rule-example {
-    display: grid;
-    grid-template-columns: minmax(140px, 0.4fr) 1fr;
-    gap: 14px;
-    align-items: baseline;
-    padding: 10px 12px;
-    background: #f7fafc;
-    border: 1px solid #e1e9ee;
-    border-radius: 7px;
-}
-.rule-example code { color: #24536c; font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
-.rule-example span { color: var(--guide-muted); font-size: 0.84rem; }
-.reference-note { margin-top: 12px; color: var(--guide-muted); font-size: 0.82rem; }
-
-.faq-list { display: grid; gap: 9px; }
-.faq-list details { padding: 0 15px; background: #fff; border: 1px solid var(--guide-line); border-radius: 8px; box-shadow: 0 3px 12px rgba(32, 48, 64, 0.04); }
-.faq-list summary { padding: 12px 0; color: var(--guide-primary); cursor: pointer; font-weight: 700; }
-.faq-list details p { margin: 0 0 14px; color: var(--guide-muted); font-size: 0.88rem; }
-
-.guide-footer {
-    margin-top: 64px;
-    padding: 30px 0 42px;
-    color: #cbd8e3;
-    background: var(--guide-primary);
-}
-.guide-footer-inner { width: min(1120px, calc(100% - 32px)); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.guide-footer p { margin: 0; font-size: 0.82rem; }
-.guide-footer-links { display: flex; flex-wrap: wrap; gap: 12px; }
-.guide-footer a { color: #eaf2f8; font-size: 0.82rem; font-weight: 700; }
-
-@media (max-width: 800px) {
-    .step-list, .method-grid, .reference-grid { grid-template-columns: 1fr; }
-    .feature-grid { grid-template-columns: 1fr; }
-    .section-heading { display: block; }
-    .section-tip { margin-top: 12px; max-width: none; }
-}
-@media (max-width: 560px) {
-    .guide-nav, .guide-main, .guide-footer-inner { width: min(100% - 22px, 1120px); }
-    .guide-nav { min-height: 52px; gap: 8px; }
-    .guide-brand small { display: none; }
-    .guide-header-links a { padding: 6px 7px; font-size: 0.74rem; }
-    .guide-section { scroll-margin-top: 70px; }
-    .guide-hero { margin-top: 22px; padding: 27px 20px; border-radius: 13px; }
-    .guide-hero h1 { font-size: 1.9rem; }
-    .guide-actions { display: grid; grid-template-columns: 1fr; }
-    .guide-btn { width: 100%; }
-    .step-card { grid-template-columns: 40px 1fr; padding: 16px; }
-    .step-number { width: 36px; height: 36px; border-radius: 10px; font-size: 1rem; }
-    .rule-example { grid-template-columns: 1fr; gap: 2px; }
-    .guide-footer-inner { display: block; }
-    .guide-footer-links { margin-top: 12px; }
-}
-@media print {
-    .guide-header, .guide-actions { display: none; }
-    body { background: #fff; }
-    .guide-main { width: 100%; }
-    .guide-hero { color: #000; background: #fff; border: 1px solid #bbb; box-shadow: none; }
-    .guide-hero-lead, .hero-privacy { color: #333; }
-    .guide-footer { color: #333; background: #fff; border-top: 1px solid #bbb; }
-    .guide-footer a { color: #333; }
-    .step-card, .method-card, .feature-card, .reference-card, .rule-table-wrap, .faq-list details { box-shadow: none; }
-}
+  :root{
+    --ink:#22303d; --muted:#5d6b78; --line:#d8dee4;
+    --bg:#edf0f3; --card:#ffffff;
+    --navy:#2e4356; --accent:#2f7fc4; --accent-dark:#256aa6;
+    --chip:#e8f1f9; --ok:#1d7a3f;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif;
+    line-height:1.75;font-size:16px;}
+  a{color:var(--accent-dark);}
+  header{background:var(--navy);color:#fff;padding:34px 20px 30px;}
+  .wrap{max-width:860px;margin:0 auto;padding:0 16px;}
+  header .wrap{padding:0 4px;}
+  h1{margin:0 0 6px;font-size:1.7rem;letter-spacing:.02em;}
+  header p{margin:0;color:#cfdce8;font-size:.98rem;}
+  .head-actions{margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;}
+  .btn{display:inline-block;padding:9px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:.95rem;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent-dark);}
+  .btn-ghost{border:1px solid #8fa6ba;color:#eaf2f9;}
+  main{padding:26px 0 10px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:22px 24px;margin:0 0 20px;box-shadow:0 1px 3px rgba(34,48,61,.05);}
+  .card h2{margin:0 0 12px;font-size:1.25rem;display:flex;align-items:center;gap:10px;}
+  .step-no{background:var(--accent);color:#fff;border-radius:999px;min-width:34px;height:34px;
+    display:inline-flex;align-items:center;justify-content:center;font-size:1.05rem;flex:none;}
+  .card h3{margin:20px 0 8px;font-size:1.05rem;border-left:4px solid var(--accent);padding-left:9px;}
+  .card h3:first-of-type{margin-top:6px;}
+  p{margin:8px 0;}
+  ol,ul{margin:8px 0 8px 1.3em;padding:0;}
+  li{margin:5px 0;}
+  .lead{font-size:1.02rem;}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 2px;padding:0;list-style:none;}
+  .flow li{margin:0;}
+  .flow a{display:inline-block;background:var(--chip);border:1px solid #c9dcee;color:var(--ink);
+    border-radius:999px;padding:6px 14px;text-decoration:none;font-size:.92rem;font-weight:700;}
+  .flow a:hover{background:#d9e9f7;}
+  figure{margin:14px 0;text-align:center;}
+  figure img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  figure.small img{max-width:400px;}
+  figure.mid img{max-width:560px;}
+  figcaption{font-size:.85rem;color:var(--muted);margin-top:6px;}
+  .note{background:#f4f8fb;border:1px solid #d5e4f0;border-radius:10px;padding:10px 14px;margin:12px 0;font-size:.94rem;}
+  .note strong{color:var(--accent-dark);}
+  table.sample{border-collapse:collapse;margin:10px 0;font-size:.92rem;background:#fff;}
+  table.sample th,table.sample td{border:1px solid var(--line);padding:5px 10px;text-align:left;white-space:nowrap;}
+  table.sample th{background:#f0f4f8;}
+  .tbl-scroll{overflow-x:auto;}
+  kbd, .ui{background:#eef2f5;border:1px solid #ccd5dc;border-bottom-width:2px;border-radius:6px;
+    padding:0 7px;font-weight:700;font-size:.9em;white-space:nowrap;}
+  .faq dt{font-weight:700;margin-top:14px;}
+  .faq dd{margin:4px 0 0 0;color:#33424f;}
+  footer{color:var(--muted);font-size:.88rem;padding:6px 0 34px;text-align:center;}
+  @media (max-width:640px){
+    .card{padding:18px 16px;}
+    h1{font-size:1.4rem;}
+  }
 </style>
 </head>
 <body>
-<header id="top" class="guide-header">
-    <div class="guide-nav">
-        <a class="guide-brand" href="./index.html" aria-label="SekiGaeの座席表へ戻る">
-            <span class="brand-mark" aria-hidden="true">SG</span>
-            <span>SekiGae <small>GUIDE</small></span>
-        </a>
-        <nav class="guide-header-links" aria-label="ガイド内メニュー">
-            <a href="#quick-start">まず使う</a>
-            <a href="#features">やりたいこと</a>
-            <a href="#reference">設定リファレンス</a>
-            <a href="#faq">困ったとき</a>
-        </nav>
+<header>
+  <div class="wrap">
+    <h1>SekiGae 使い方ガイド</h1>
+    <p>教室の座席替えアプリ SekiGae を、初めて使う人向けに説明します。自分のクラスの名簿から座席表を作って印刷するまで、この順番に進めれば一人でできます。</p>
+    <div class="head-actions">
+      <a class="btn btn-primary" href="./index.html">アプリを開く</a>
+      <a class="btn btn-ghost" href="./sample.html">サンプル版で練習する</a>
     </div>
+  </div>
 </header>
+<main>
+  <div class="wrap">
 
-<main class="guide-main">
-    <section class="guide-hero" aria-labelledby="guide-title">
-        <div>
-            <p class="guide-eyebrow">SEKIGAE / 使い方ガイド</p>
-            <h1 id="guide-title">名簿を貼り付けて、<br>条件に合う座席表をつくる。</h1>
-            <p class="guide-hero-lead">名簿の貼り付けから、座席数の調整、条件付きの席替え、見やすい表示、教員側・生徒側の視点、A4印刷・PDF保存まで。基本は5ステップです。</p>
-            <div class="guide-actions">
-                <a class="guide-btn guide-btn-primary" href="./sample.html">サンプル版で試す</a>
-                <a class="guide-btn guide-btn-light" href="./index.html">通常版を開く</a>
-            </div>
-            <p class="hero-privacy"><strong>データについて：</strong>通常版の名簿・履歴・設定は、この端末のこのブラウザ内に保存され、入力内容を外部へ送信しません。大切なデータは定期的にバックアップしてください。</p>
-        </div>
+    <section class="card">
+      <p class="lead">画面は大きく分けて、座席表を作る <span class="ui">座席表・設定</span> タブと、名簿を管理する <span class="ui">名簿管理</span> タブの2つです。作業は次の5ステップで進みます。</p>
+      <ol class="flow">
+        <li><a href="#step1">1. クラスデータを作る</a></li>
+        <li><a href="#step2">2. 座席を用意する</a></li>
+        <li><a href="#step3">3. 配置する</a></li>
+        <li><a href="#step4">4. 男女で色分けする</a></li>
+        <li><a href="#step5">5. 印刷する</a></li>
+      </ol>
+      <div class="note">
+        <strong>まずは練習したい場合：</strong><a href="./sample.html">サンプル版</a>では架空の名簿で全機能を試せます。サンプル版の変更は、ページを再読み込みすると初期状態に戻ります。
+      </div>
     </section>
 
-    <section id="quick-start" class="guide-section" aria-labelledby="quick-start-title">
-        <div class="section-heading">
-            <div>
-                <p class="section-kicker">01 / QUICK START</p>
-                <h2 id="quick-start-title">まず使う：基本5ステップ</h2>
-            </div>
-        </div>
-        <p class="section-intro">名簿を取り込み、人数に合わせて座席数を調整します。配置はすぐに確定せず、プレビューを確認してから保存します。</p>
-
-        <ol class="step-list">
-            <li class="step-card">
-                <div class="step-number">1</div>
-                <div>
-                    <span class="step-tag">最初に必要</span>
-                    <h3>名簿を貼り付ける</h3>
-                    <p>「名簿管理」を開き、Excelなどから「番号・氏名・かな・性別・属性1・属性2・備考」の7列をコピーして貼り付け、「表に反映」を押します。属性1・属性2には委員会や部活動などを入れておくのがおすすめです。備考は自由メモではなく、個人の座席指定や個別NGを入力する欄です。指定がなければ空欄にします。表を直接編集したときは「元に戻す」で編集途中の操作を取り消せます。行を削除したいときは、表の右上にあるゴミ箱をONにしてから、その行のゴミ箱を押してください。</p>
-                </div>
-            </li>
-            <li class="step-card">
-                <div class="step-number">2</div>
-                <div>
-                    <h3>座席数を調整する</h3>
-                    <p>「座席表・設定」で使わない席をクリックし、空席にします。名簿の人数が有効座席数を超えていないことを確認してください。必要なら、教卓から見た左右端を「廊下」「窓」に設定します。</p>
-                </div>
-            </li>
-            <li class="step-card">
-                <div class="step-number">3</div>
-                <div>
-                    <h3>配置方法を選ぶ</h3>
-                    <p>普通の席替えは「シャッフル」、男女の市松模様は「市松」、番号順に並べるときは「整列」を選びます。いずれもまずプレビューが表示されます。</p>
-                </div>
-            </li>
-            <li class="step-card">
-                <div class="step-number">4</div>
-                <div>
-                    <h3>プレビューを確認して確定する</h3>
-                    <p>シャッフル結果の確認中は、非アクティブ席に薄い座席座標（a1など）が表示されます。配置を確認し、必要なら生徒をドラッグして入れ替えます。空席へ移すときも、生徒を非アクティブ席へドラッグしてドロップできます。タップ／クリックで生徒を選び、移動先の空席を選ぶ方法も使えます。条件や公平性に関する警告を確認したら、「座席を確定」を押して履歴に保存します。</p>
-                </div>
-            </li>
-            <li class="step-card">
-                <div class="step-number">5</div>
-                <div>
-                    <h3>視点を選んで印刷する</h3>
-                    <p>画面上部の「画面: 横／縦」で作業画面の配置を切り替えます。横画面では座席表を広く表示し、右側の独立スクロール設定欄の最上部で配置操作、対象クラスと人数を確認・変更できます。続けて「視点」で教員側・生徒側を選びます。「印刷プレビュー」では用紙の向き、視点、空席表示に加え、「色設定」からレイアウト・色・色分けを確認して変更し、「印刷・PDF保存」から紙またはPDFに出力できます。配置名を保存している場合、対応するブラウザではPDF保存名の初期候補が「クラス名_配置名.pdf」になります。</p>
-                </div>
-            </li>
-        </ol>
-
-        <div class="quick-note"><strong>忘れずに：</strong>データはブラウザ内に保存されるため、授業や学期の区切りで「バックアップ保存」を行ってください。バックアップには個人情報が含まれるため、適切に保管します。サンプル版は再読み込みすると初期状態に戻ります。</div>
-
-        <h3 class="subsection-title">配置方法はこの3つ</h3>
-        <div class="method-grid">
-            <article class="method-card">
-                <p class="card-label">おすすめ</p>
-                <h3>シャッフル</h3>
-                <p>必須条件を守りながら、過去の席やペアの偏りを抑える配置を探索します。</p>
-                <ul><li>普通の席替え向け</li><li>過去履歴があるほど公平化に活用</li></ul>
-            </article>
-            <article class="method-card">
-                <p class="card-label">男女配置</p>
-                <h3>市松</h3>
-                <p>男女が交互になる市松模様を基準に配置します。最初にa1席の性別を選びます。</p>
-                <ul><li>名簿の性別入力が必要</li><li>人数差があると例外席を選択</li></ul>
-            </article>
-            <article class="method-card">
-                <p class="card-label">番号順</p>
-                <h3>整列</h3>
-                <p>番号順に座席を埋めます。開始位置、行・列の向き、Z型・S型を選べます。</p>
-                <ul><li>名簿確認や一時配置向け</li><li>空席は自動でスキップ</li></ul>
-            </article>
-        </div>
+    <section class="card" id="step1">
+      <h2><span class="step-no">1</span>クラスデータを作る（名簿をコピペ）</h2>
+      <ol>
+        <li>上部の <span class="ui">名簿管理</span> タブを開きます。</li>
+        <li><span class="ui">新規作成</span> ボタンを押し、<span class="ui">クラス名</span> にクラス名（例：3年1組）を入力して <span class="ui">保存</span> を押します。</li>
+        <li>Excelなどで名簿を用意し、範囲を選んでコピーします。列の並びは <strong>番号 / 氏名 / かな / 性別 / 属性1 / 属性2 / 備考</strong> の7列です。</li>
+        <li>SekiGaeの貼り付け欄にペーストして、<span class="ui">表に反映</span> を押します。</li>
+      </ol>
+      <figure>
+        <img src="guide-img/paste.jpg" alt="名簿管理の貼り付け欄と「表に反映」ボタン" loading="lazy">
+        <figcaption>名簿管理の上部。コピーした名簿を貼り付けて「表に反映」を押す</figcaption>
+      </figure>
+      <p>名簿の列は最低限 <strong>番号</strong> と <strong>氏名</strong> があれば使えます。男女の色分けをしたい場合は <strong>性別</strong>（男・女）も入れてください。かな・属性1・属性2・備考は空欄でかまいません。</p>
+      <div class="tbl-scroll">
+        <table class="sample">
+          <tr><th>番号</th><th>氏名</th><th>かな</th><th>性別</th><th>属性1</th><th>属性2</th><th>備考</th></tr>
+          <tr><td>101</td><td>青木 空</td><td>あおき そら</td><td>男</td><td></td><td></td><td></td></tr>
+          <tr><td>102</td><td>井上 葵</td><td>いのうえ あおい</td><td>女</td><td></td><td></td><td></td></tr>
+          <tr><td>103</td><td>宇田 陸</td><td>うだ りく</td><td>男</td><td></td><td></td><td></td></tr>
+        </table>
+      </div>
+      <p>反映されると、下の表に名簿が入ります。この表はそのまま直接編集でき、<span class="ui">行を追加</span> や行の削除もここでできます。</p>
+      <figure>
+        <img src="guide-img/roster.jpg" alt="反映された名簿データの表" loading="lazy">
+        <figcaption>反映後の名簿データ。セルをクリックすれば直接直せる</figcaption>
+      </figure>
+      <div class="note">
+        <strong>保存について：</strong><span class="ui">座席表・設定</span> タブへ切り替えると、名簿の内容は自動で保存・反映されます。データは<strong>使用しているパソコンのブラウザ内</strong>に保存され、外部へ送信されることはありません。
+      </div>
     </section>
 
-    <section id="features" class="guide-section" aria-labelledby="features-title">
-        <div class="section-heading">
-            <div>
-                <p class="section-kicker">02 / FEATURE GUIDE</p>
-                <h2 id="features-title">やりたいことから探す</h2>
-            </div>
-        </div>
-        <p class="section-intro">機能名が分からないときは、目的から選べます。詳しい設定に進む前に、どんなことができるかを確認できます。</p>
-
-        <div class="feature-grid">
-            <article class="feature-card">
-                <span class="feature-icon" aria-hidden="true">条件</span>
-                <h3>条件を付けたい</h3>
-                <p>個人ごとの席・行・列指定、全体ルール、NGペアの隣接禁止を設定できます。必須条件として扱われます。</p>
-                <ul><li>備考欄に個人指定</li><li>全体ルールで番号 prefix を指定</li></ul>
-            </article>
-            <article class="feature-card">
-                <span class="feature-icon" aria-hidden="true">公平</span>
-                <h3>前回と違う席にしたい</h3>
-                <p>過去の座席やペア、前列・後列、窓側・廊下側の履歴を使って、特定の生徒に不利益が集中しない配置を探します。</p>
-                <ul><li>履歴を残すほど活用しやすい</li><li>設定値は後から変更可能</li></ul>
-            </article>
-            <article class="feature-card">
-                <span class="feature-icon" aria-hidden="true">交換</span>
-                <h3>少し手直ししたい</h3>
-                <p>プレビュー中の席をドラッグして生徒を入れ替えられます。タッチ端末では、席を長押しして青い枠が出たら、別の席へ指を動かして離します。この間はスクロールを抑制します。長押し前に指を動かすと通常どおりスクロールできます。盤面外で離すと入れ替えを中止します。空席へ移すときは、生徒をタップ／クリックしてから移動先の空席を選びます。必須条件に触れる場合や公平性が悪化する場合は確認が表示されます。</p>
-                <ul><li>「手動変更を戻す」で直前の入替・移動を戻す</li><li>確定前なら「キャンセル」可能</li></ul>
-            </article>
-            <article class="feature-card">
-                <span class="feature-icon" aria-hidden="true">表示</span>
-                <h3>表示・印刷項目を選びたい</h3>
-                <p>座席内レイアウト設定で、番号・かな・氏名・属性1・属性2の各行を印刷するか選べます。行ごとの色番号とフォントも設定できます。印刷プレビュー内の「色設定」でも同じレイアウト、色、色分けを変更でき、変更はメイン画面の同じクラス設定へ同期して保存されます。</p>
-                <ul><li>画面では項目を確認しながら調整</li><li>印刷では不要な行を非表示</li></ul>
-            </article>
-            <article class="feature-card">
-                <span class="feature-icon" aria-hidden="true">履歴</span>
-                <h3>過去の配置を確認したい</h3>
-                <p>確定した座席を履歴から復元できます。座席を右クリック、またはタッチ端末で長押しして動かさずに指を離すと、その生徒の過去座席・ペア・指定を確認できます。</p>
-                <ul><li>履歴にメモを付ける</li><li>クラスごとに履歴を管理</li></ul>
-            </article>
-            <article class="feature-card">
-                <span class="feature-icon" aria-hidden="true">保存</span>
-                <h3>クラスや外部データを管理したい</h3>
-                <p>複数クラスを切り替え、バックアップを保存・読込できます。座席番号のコピーや、Excelの座席表の取り込みにも対応しています。</p>
-                <ul><li>クラス単位でバックアップ対象を選択</li><li>外部表との受け渡しに対応</li></ul>
-            </article>
-        </div>
-
-        <div class="callout"><strong>視点の使い分け：</strong>通常画面の「視点」と、印刷プレビュー内の「視点」は別に選べます。教卓を基準に左右を確認してから、掲示用・配布用の向きを決めてください。</div>
+    <section class="card" id="step2">
+      <h2><span class="step-no">2</span>座席を用意する</h2>
+      <p><span class="ui">座席表・設定</span> タブの座席表は <strong>6列 × 7行 = 42席</strong> です。画面の下側が教卓側で、<span class="ui">廊下</span> と <span class="ui">窓</span> の表示で教室の向きを確認できます。</p>
+      <ul>
+        <li>教室の机の並びに合わせて、<strong>使わない席はクリックすると空席</strong>になります（もう一度クリックすると元に戻ります）。空席は配置の対象から外れます。</li>
+        <li>有効な席数は、右側の <span class="ui">座席 ○席</span> の表示で確認できます。クラスの人数以上あれば大丈夫です。</li>
+      </ul>
+      <div class="note">
+        <strong>42名を超えるクラスや、列数・行数を変えたい場合：</strong>座席レイアウトを変更できる<a href="https://koichem.github.io/SekiGae/prototype/">試作版</a>（最大80名まで対応）があります。
+      </div>
     </section>
 
-    <section id="reference" class="guide-section" aria-labelledby="reference-title">
-        <div class="section-heading">
-            <div>
-                <p class="section-kicker">03 / REFERENCE</p>
-                <h2 id="reference-title">設定を詳しく知る</h2>
-            </div>
-            <div class="section-tip">設定に迷ったら、まずは必須ルールを少なくして、配置できることを確認します。</div>
-        </div>
-        <p class="section-intro">ここからは、条件の記法、公平化の考え方、表示・印刷、保存の仕様を確認できます。</p>
+    <section class="card" id="step3">
+      <h2><span class="step-no">3</span>配置する（番号順・市松・シャッフル）</h2>
+      <p>右側の3つのボタンが配置方法です。どの方法でも、結果はまずプレビューとして表示され、<span class="ui">座席を確定</span> を押すまでは履歴に保存されません。やめたいときは <span class="ui">キャンセル</span> を押します。</p>
+      <figure class="small">
+        <img src="guide-img/arrange-buttons.jpg" alt="配置ボタン（市松・シャッフル・整列）と「座席を確定」" loading="lazy">
+        <figcaption>配置ボタンと、その下の「座席を確定」</figcaption>
+      </figure>
 
-        <div class="reference-grid">
-            <article class="reference-card reference-card--required">
-                <h3>必須ルール</h3>
-                <p>配置できる席がなくなる条件は、必ず守るルールです。条件同士が矛盾すると、配置を中止して修正を促します。</p>
-                <ul><li>備考欄の個人指定</li><li>全体ルールの席・行・列指定</li><li>NGペアの隣接禁止</li><li>市松配置</li></ul>
-            </article>
-            <article class="reference-card reference-card--priority">
-                <h3>優先ルール</h3>
-                <p>必須ルールを満たしたうえで、できるだけ不利益を減らすための評価です。すべてを0にできない場合もあります。</p>
-                <ul><li>前列・後列</li><li>過去ペア</li><li>窓側・廊下側</li><li>過去座席・周囲の席</li></ul>
-            </article>
-        </div>
+      <h3>整列 ― 番号順に並べる</h3>
+      <p><span class="ui">整列</span> を押すと設定画面が開きます。はじめは既定のままで問題ありません。そのまま <span class="ui">整列を実行</span> を押すと、番号順に座席が埋まります（空席は自動でスキップされます）。</p>
+      <figure class="mid">
+        <img src="guide-img/seiretsu-dialog.jpg" alt="整列モード設定の画面" loading="lazy">
+        <figcaption>整列モード設定。開始位置・並べる方向・折り返し（Z型／S型）を選べる</figcaption>
+      </figure>
+      <figure>
+        <img src="guide-img/seiretsu-result.jpg" alt="整列で番号順に配置された座席表" loading="lazy">
+        <figcaption>整列の結果。教卓側の左端（左下）から番号順に埋まっている</figcaption>
+      </figure>
 
-        <h3 class="subsection-title">名簿の貼り付け形式</h3>
-        <div class="rule-table-wrap">
-            <table class="rule-table">
-                <thead><tr><th>1列目</th><th>2列目</th><th>3列目</th><th>4列目</th><th>5列目</th><th>6列目</th><th>7列目</th></tr></thead>
-                <tbody><tr><td>番号</td><td>氏名</td><td>かな</td><td>性別</td><td>属性1</td><td>属性2</td><td>備考</td></tr></tbody>
-            </table>
-        </div>
-        <p class="reference-note">Excelから行と列を保ったままコピーし、名簿管理の貼り付け欄に貼り付けます。番号は空欄や重複がないようにしてください。既に名簿がある場合は、追加か置き換えかを選べます。</p>
+      <h3>市松 ― 男女が市松模様になるように並べる</h3>
+      <p><span class="ui">市松</span> を押すと、左上の席（a1席＝教卓側の左端）に入る性別を、2つの枠から選ぶ画面が開きます。<span class="ui">配置可能</span> と表示された枠の <span class="ui">この枠で実行</span> を押してください。</p>
+      <figure class="mid">
+        <img src="guide-img/ichimatsu-dialog.jpg" alt="市松の枠の選択画面" loading="lazy">
+        <figcaption>市松：枠の選択。左上＝男／左上＝女の2パターンから選ぶ</figcaption>
+      </figure>
+      <figure>
+        <img src="guide-img/ichimatsu-result.jpg" alt="市松で配置された座席表" loading="lazy">
+        <figcaption>市松の結果。男女が交互のマス目に配置される（色分けは次のステップで設定した状態）</figcaption>
+      </figure>
 
-        <h3 class="subsection-title">条件指定の記法</h3>
-        <div class="rule-example-list">
-            <div class="rule-example"><code>@(a1,b5)</code><span>個人の備考欄：a1席またはb5席に配置</span></div>
-            <div class="rule-example"><code>@(a,c,e)</code><span>個人の備考欄：a・c・e列のいずれかに配置</span></div>
-            <div class="rule-example"><code>@(1,4,6)</code><span>個人の備考欄：1・4・6行のいずれかに配置</span></div>
-            <div class="rule-example"><code>NG(1205)</code><span>個人の備考欄：1205番の生徒を8近傍に置かない（片方に書けば両者へ適用）</span></div>
-            <div class="rule-example"><code>@25(a1,b5)</code><span>全体ルール：25で始まる番号をa1席またはb5席へ</span></div>
-            <div class="rule-example"><code>NG(23*,24*)</code><span>全体ルール：23で始まる番号と24で始まる番号を8近傍に置かない</span></div>
-        </div>
-        <p class="reference-note">全体ルールは1行に1つ入力します。備考欄のNGは番号の完全一致、全体ルールのNGでは <code>*</code> が任意の文字列を表します。記法エラーや指定の矛盾がある場合は、座席表へ進む前に確認が表示されます。</p>
-        <p class="reference-note">座席枠左上の🧲は、その生徒にNG隣接禁止が有効である印です。片方の備考欄だけに個別NGを書いた場合も、制約は双方に適用され、両方に表示されます。この印は画面上の補助表示で、印刷には出ません。</p>
+      <h3>シャッフル ― ランダムに並べる</h3>
+      <p><span class="ui">シャッフル</span> を押すだけで、ランダムな配置が作られます。押すたびに新しい候補が追加され、<span class="ui">前の候補</span> / <span class="ui">次の候補</span> で行き来して見比べられます（候補の数は <span class="ui">最新 / ○件</span> のように表示されます）。</p>
 
-        <h3 class="subsection-title">公平化の設定</h3>
-        <div class="rule-table-wrap">
-            <table class="rule-table">
-                <thead><tr><th>設定</th><th>何を調整するか</th><th>考え方</th></tr></thead>
-                <tbody>
-                    <tr><td>ポイントの基準・減算</td><td>前列、後列、ペア、窓側、廊下側、過去座席</td><td>履歴が古くなるほど、同じ条件の不利益を軽くする</td></tr>
-                    <tr><td>参照する履歴段数</td><td>前後・窓側・廊下側・過去ペア</td><td>0でその項目をオフ。最大5段階まで</td></tr>
-                    <tr><td>過去座席</td><td>同じ席と周囲8席</td><td>過去座席は8〜15段階、周囲8席は0〜8段階</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="callout"><strong>配置の比較順：</strong>まず一人にポイントが集中しないこと、次に個人ごとの負担の分布、最後に全体の合計ポイントの順で配置を比較します。</div>
-
-        <h3 class="subsection-title">表示・印刷と保存</h3>
-        <div class="reference-grid">
-            <article class="reference-card">
-                <h3>表示・印刷</h3>
-                <ul><li>「画面: 横／縦」で作業画面の配置を切替（初期値は横）</li><li>横画面は座席表を広く表示し、右側の独立スクロール設定欄の最上部で配置操作、対象クラス・人数を確認・変更</li><li>教員側・生徒側の視点を切替</li><li>A4縦・A4横を選択</li><li>空席を非表示または枠表示</li><li>印刷プレビューの「色設定」でも、座席内の印刷行・色・フォント・色分けを設定（メイン画面と同期して保存）</li><li>ブラウザの印刷画面からPDF保存（対応ブラウザでは、保存済み配置名を含む「クラス名_配置名.pdf」が初期候補）</li></ul>
-            </article>
-            <article class="reference-card">
-                <h3>保存・バックアップ</h3>
-                <ul><li>通常版のデータはこの端末のこのブラウザ内に保存</li><li>別の端末・ブラウザには自動共有されない</li><li>確定した配置は履歴に保存</li><li>クラスを選んでバックアップ保存（個人情報を含むJSON）</li><li>バックアップ読込時は取り込むクラスを選択</li><li>「全データ削除」で、このブラウザ内のSekiGaeデータを削除できる</li><li>サンプル版は再読み込みで初期化</li></ul>
-            </article>
-        </div>
+      <h3>決まったら確定する</h3>
+      <ul>
+        <li>気に入った配置で <span class="ui">座席を確定</span> を押すと、その配置が履歴に保存されます。過去の配置は右側の「過去の配置を盤面に復元」から呼び戻せます。</li>
+        <li>確定の前後どちらでも、生徒の席は<strong>ドラッグで別の席へ動かして入れ替え</strong>できます。やり直したいときは <span class="ui">手動変更を戻す</span> を使います。</li>
+      </ul>
     </section>
 
-    <section id="faq" class="guide-section" aria-labelledby="faq-title">
-        <div class="section-heading">
-            <div>
-                <p class="section-kicker">HELP</p>
-                <h2 id="faq-title">困ったとき</h2>
-            </div>
-        </div>
-        <div class="faq-list">
-            <details>
-                <summary>配置できない、または条件エラーが表示される</summary>
-                <p>必須ルール同士が矛盾しているか、生徒数が有効座席数を上回っている可能性があります。空席設定、個人の備考欄、全体ルールを順番に確認し、条件を一つずつ減らして試してください。</p>
-            </details>
-            <details>
-                <summary>名簿をうまく取り込めない</summary>
-                <p>Excelからタブ区切りの7列をコピーできているか、番号が空欄・重複していないかを確認してください。既存の名簿がある場合は、「既存に追加」または「全て置き換え」を選びます。</p>
-            </details>
-            <details>
-                <summary>シャッフル後の配置がすぐ保存されない</summary>
-                <p>シャッフルと整列はまずプレビューを作ります。内容を確認した後、「座席を確定」を押すと現在の配置と履歴が保存されます。</p>
-            </details>
-            <details>
-                <summary>印刷の左右が想定と違う</summary>
-                <p>教卓を基準にした教員側・生徒側の視点を確認し、印刷プレビュー内の視点を選び直してください。必要に応じてA4縦・A4横も切り替えます。</p>
-            </details>
-            <details>
-                <summary>データが見つからない</summary>
-                <p>データはブラウザごと・端末ごとに保存されます。別の端末やブラウザでは自動共有されません。事前に保存したバックアップがあれば、「バックアップ読込」から復元できます。</p>
-            </details>
-            <details>
-                <summary>端末からデータを消したい</summary>
-                <p>データ・履歴管理の「全データ削除」を使うと、このブラウザ内のSekiGaeの全クラス、名簿、座席配置、履歴、設定を削除できます。削除前にバックアップを作成でき、確認のため「全削除」の入力が必要です。ダウンロード済みのバックアップ、PDF、印刷物、別の端末・ブラウザのデータは削除されません。</p>
-            </details>
-        </div>
+    <section class="card" id="step4">
+      <h2><span class="step-no">4</span>男女で色分けする</h2>
+      <p>座席に男女の色枠を付けると、座席表が見やすくなります。右側パネルの <span class="ui">色設定</span> の下にある <span class="ui">色分け</span> の設定を使います。</p>
+      <figure class="small">
+        <img src="guide-img/color-settings.jpg" alt="色設定と色分けの設定" loading="lazy">
+        <figcaption>色設定（1〜6の色）と色分けの設定。色分けの「OFF」を押して「ON」にする</figcaption>
+      </figure>
+      <ol>
+        <li><span class="ui">色分け</span> の横の <span class="ui">OFF</span> を押して <span class="ui">ON</span> にします。</li>
+        <li><span class="ui">男</span> と <span class="ui">女</span> の欄で、それぞれ色の番号（色設定の1〜6）を選びます。</li>
+        <li>線の種類は <span class="ui">通常</span> / <span class="ui">太線</span> / <span class="ui">二重線</span> から選べます。</li>
+      </ol>
+      <ul>
+        <li>色そのものを変えたいときは、<span class="ui">色設定</span> の番号ボタンを押すとパレットが開き、色を選べます。</li>
+        <li><span class="ui">塗り</span> を ON にすると、枠線ではなく座席全体に色が付きます。</li>
+      </ul>
+      <figure>
+        <img src="guide-img/colored-result.jpg" alt="色分けをONにした座席表" loading="lazy">
+        <figcaption>色分けONの座席表。この例では男＝6番（ピンク）、女＝5番（ティール）の枠線</figcaption>
+      </figure>
     </section>
+
+    <section class="card" id="step5">
+      <h2><span class="step-no">5</span>印刷する</h2>
+      <ol>
+        <li>右上の <span class="ui">印刷プレビュー</span> を押します。</li>
+        <li>用紙の向き <span class="ui">A4縦</span> / <span class="ui">A4横</span> を選びます。生徒にそのまま見せる座席表なら <span class="ui">生徒視点</span>、教卓から見る並びなら <span class="ui">教員視点</span> です。</li>
+        <li>空席の表示は <span class="ui">空席 隠す</span> / <span class="ui">空席 枠</span> で切り替えます。プレビュー右側の色設定では、番号・かな・氏名などの項目ごとに、印刷するかどうか・色・フォントも調整できます。</li>
+        <li><span class="ui">印刷・PDF</span> を押すと印刷ダイアログが開きます。そのまま印刷するか、PDFとして保存してください。</li>
+      </ol>
+      <figure>
+        <img src="guide-img/print-preview.jpg" alt="印刷プレビューの画面" loading="lazy">
+        <figcaption>印刷プレビュー。左が印刷イメージ、右が表示・色の設定、上部に「印刷・PDF」ボタン</figcaption>
+      </figure>
+    </section>
+
+    <section class="card">
+      <h2>困ったとき・覚えておくと便利なこと</h2>
+      <dl class="faq">
+        <dt>データはどこに保存されますか？</dt>
+        <dd>使用しているパソコンのブラウザ内に自動で保存されます。別のパソコンやブラウザでは引き継がれないので、移したいときは <span class="ui">名簿管理</span> の <span class="ui">バックアップ保存</span> でファイルに書き出し、移し先で <span class="ui">バックアップ読込</span> を使ってください。</dd>
+        <dt>画面の向きや見え方を変えたい</dt>
+        <dd>右上の <span class="ui">画面： 横</span> で縦向き表示に切り替えられます。<span class="ui">教員視点</span> / <span class="ui">生徒視点</span> は、座席表を見る向き（教卓側から／生徒側から）を切り替えます。</dd>
+        <dt>座席に表示する項目を変えたい</dt>
+        <dd>右側の「座席内レイアウト設定」で、番号・かな・氏名・属性1・属性2ごとに、表示と印刷の有無、文字の色、フォント（ゴシック／明朝／丸ゴ／教科書）を選べます。</dd>
+        <dt>「この生徒は前列に」「この2人は離して」といった条件を付けたい</dt>
+        <dd><span class="ui">名簿管理</span> の備考欄や「全体ルール設定（必須ルール）」で条件を指定できます。慣れてきたら使ってみてください。</dd>
+        <dt>作った座席表をExcelなどでも使いたい</dt>
+        <dd>右側の「データ・履歴管理」にある <span class="ui">外部座席表用・番号コピー</span> で座席表形式にコピーでき、逆に <span class="ui">Excelの座席表を取り込む</span> で取り込むこともできます。</dd>
+      </dl>
+    </section>
+
+  </div>
 </main>
-
-<footer class="guide-footer">
-    <div class="guide-footer-inner">
-        <p>SekiGae｜席替えを、分かりやすく。</p>
-        <div class="guide-footer-links">
-            <a href="#top" onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;">ページ上部へ</a>
-            <a href="./sample.html">サンプル版</a>
-            <a href="./index.html">通常版</a>
-        </div>
-    </div>
+<footer>
+  <div class="wrap">
+    SekiGae ― <a href="./index.html">アプリを開く</a> / <a href="./sample.html">サンプル版</a> / <a href="https://github.com/KoiChem/SekiGae">GitHub</a>
+  </div>
 </footer>
 </body>
 </html>
