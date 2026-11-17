@@ -99,3 +99,12 @@ test('first visit uses viewport orientation and a saved manual choice takes prec
     assert.equal(mode,'portrait');
     s.storage.set(s.run('UI_LAYOUT_STORAGE_KEY'),'landscape');s.context.loadUiLayoutMode();assert.equal(mode,'landscape');
 });
+test('sample operations use page memory and leave persistent storage untouched',()=>{
+    const s=setup('?sample=1');
+    s.storage.set('other-app','preserved');
+    s.run("appStorage.setItem(PREFIX+'system','sample'); appStorage.setItem(PREFIX+'data_test','value')");
+    assert.equal(s.run("appStorage.getItem(PREFIX+'system')"),'sample');
+    assert.equal(s.storage.size,1);
+    assert.equal(s.storage.get('other-app'),'preserved');
+    assert.equal(setup('?sample=1').run("appStorage.getItem(PREFIX+'system')"),null);
+});

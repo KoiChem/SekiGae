@@ -133,6 +133,18 @@ function createShuffleRandomStreams(seed) {
 
 // --- 定数・システム管理 ---
 const SAMPLE_MODE = new URLSearchParams(window.location.search).get('sample') === '1';
+// サンプルはページ内だけで保存し、ブラウザの保存制限・容量に依存しない。
+const appStorage = SAMPLE_MODE ? (() => {
+    const values = Object.create(null);
+    return new Proxy(values, { get(target, key) {
+        if (key === 'getItem') return k => target[k] ?? null;
+        if (key === 'setItem') return (k, v) => { target[k] = String(v); };
+        if (key === 'removeItem') return k => { delete target[k]; };
+        if (key === 'key') return i => Object.keys(target)[i] ?? null;
+        if (key === 'length') return Object.keys(target).length;
+        return target[key];
+    }});
+})() : localStorage;
 const PREFIX = SAMPLE_MODE ? 'SekiGaeTrial_sample_v1_' : 'SekiGaeTrial_v1_';
 const SAMPLE_BACKUP_URL = './meibo_sample.json';
 /** クラス・バックアップとは独立した、この端末での画面表示の好み。 */
@@ -1288,7 +1300,7 @@ function applyUiLayoutMode(value, shouldPersist = false) {
             ? '現在は横画面レイアウトです。縦画面レイアウトへ切り替えます'
             : '現在は縦画面レイアウトです。横画面レイアウトへ切り替えます');
     }
-    if (shouldPersist) localStorage.setItem(UI_LAYOUT_STORAGE_KEY, mode);
+    if (shouldPersist) appStorage.setItem(UI_LAYOUT_STORAGE_KEY, mode);
 
     if (!document.body.classList.contains('print-mode')) {
         scheduleFitDeskClassName();
@@ -1310,7 +1322,7 @@ function resetMainLayoutScrollPositions() {
 
 function loadUiLayoutMode() {
     let stored = null;
-    try { stored = localStorage.getItem(UI_LAYOUT_STORAGE_KEY); } catch (error) {}
+    try { stored = appStorage.getItem(UI_LAYOUT_STORAGE_KEY); } catch (error) {}
     applyUiLayoutMode(stored ?? (window.innerHeight > window.innerWidth ? 'portrait' : 'landscape'), false);
 }
 
@@ -1666,16 +1678,21 @@ function getCheckedRadioValue(name) {
  * 毎回このバックアップを読み込むため、通常版の保存データや前回のサンプル操作を残さない。
  */
 async function loadSampleBackup() {
-    const sampleKeys = Object.keys(localStorage).filter(key => key.startsWith(PREFIX));
-    sampleKeys.forEach(key => localStorage.removeItem(key));
-
-    const response = await fetch(SAMPLE_BACKUP_URL, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`sample backup request failed: ${response.status}`);
-    const backup = await response.json();
+    let response;
+    try { response = await fetch(SAMPLE_BACKUP_URL, { cache: 'no-store' }); }
+    catch (error) { throw new Error('通信に失敗しました。接続を確認してください。', { cause: error }); }
+    if (!response.ok) throw new Error(`サンプルを取得できませんでした（HTTP ${response.status}）。`);
+    let backup;
+    try { backup = await response.json(); } catch (error) { throw new Error('サンプルデータの形式が正しくありません。', { cause: error }); }
     if (!backup || typeof backup !== 'object' || Array.isArray(backup)) {
         throw new Error('sample backup is not an object');
     }
-    Object.entries(backup).forEach(([key, value]) => {
+    const entries = Object.entries(backup).filter(([key]) => normalizeBackupStorageKey(key));
+    const systemEntry = entries.find(([key]) => normalizeBackupStorageKey(key) === PREFIX + 'system');
+    const system = systemEntry && JSON.parse(systemEntry[1]);
+    if (!system?.classes?.length || system.classes.some(c => !entries.some(([key, value]) => normalizeBackupStorageKey(key) === PREFIX + 'data_' + c.id && Array.isArray(JSON.parse(value).students)))) throw new Error('サンプルのクラスデータが不足しています。');
+    Object.keys(appStorage).forEach(key => appStorage.removeItem(key));
+    entries.forEach(([key, value]) => {
         const sampleKey = normalizeBackupStorageKey(key);
         if (!sampleKey) return;
         let sampleValue = String(value);
@@ -1690,7 +1707,7 @@ async function loadSampleBackup() {
                 console.warn('サンプル表示設定の更新をスキップしました。', error);
             }
         }
-        localStorage.setItem(sampleKey, sampleValue);
+        appStorage.setItem(sampleKey, sampleValue);
     });
 }
 
@@ -1698,6 +1715,8 @@ function showSampleWelcomeModal() {
     if (!SAMPLE_MODE) return;
     document.body.classList.add('sample-mode');
     document.title = 'SekiGae 試作サンプル版';
+    const note = document.querySelector('.local-data-note');
+    if (note) note.textContent = 'サンプルの変更は、このページを開いている間だけ保持されます。再読み込みすると初期状態へ戻ります。';
     const banner = document.getElementById('sample-mode-banner');
     if (banner) banner.hidden = false;
     const modal = document.getElementById('sample-mode-modal');
@@ -1759,11 +1778,14 @@ function initializeApp() {
 // --- 初期化 ---
 window.onload = async () => {
     if (SAMPLE_MODE) {
+        while (true) {
         try {
             await loadSampleBackup();
+            break;
         } catch (error) {
             console.error('サンプルデータの読み込みに失敗しました。', error);
-            await appAlert('サンプルデータの読み込みに失敗しました。ページを再読み込みしてください。');
+            if (!(await appConfirm('サンプルを開けませんでした。\n' + error.message, '再試行'))) return;
+        }
         }
     }
     initializeApp();
@@ -2790,7 +2812,7 @@ function updateCounters() {
 
 // --- クラス管理 ---
 function loadAppSystemData() {
-    const systemDataString = localStorage.getItem(`${PREFIX}system`);
+    const systemDataString = appStorage.getItem(`${PREFIX}system`);
     if(systemDataString) { try { appData = JSON.parse(systemDataString); } catch(e) {} }
     if(!appData || typeof appData !== 'object') appData = { classes: [], currentClassId: '' };
     if(!Array.isArray(appData.classes) || appData.classes.length === 0) {
@@ -2804,7 +2826,7 @@ function loadAppSystemData() {
     updateClassSelects();
 }
 
-function saveAppSystemData() { localStorage.setItem(`${PREFIX}system`, JSON.stringify(appData)); updateClassSelects(); }
+function saveAppSystemData() { appStorage.setItem(`${PREFIX}system`, JSON.stringify(appData)); updateClassSelects(); }
 
 function updateClassSelects() {
     const classSelects = [
@@ -2887,7 +2909,7 @@ function resetClassScopedSettingsUI() {
 async function deleteCurrentClass() {
     if(appData.classes.length <= 1) return await appAlert("最後のクラスは削除できません。");
     if(await appConfirm(`本当に「${document.getElementById('class-name-input').value}」を削除しますか？\n履歴もすべて消去されます。`,'クラスを削除')) {
-        localStorage.removeItem(`${PREFIX}data_${appData.currentClassId}`);
+        appStorage.removeItem(`${PREFIX}data_${appData.currentClassId}`);
         appData.classes = appData.classes.filter(c => c.id !== appData.currentClassId);
         appData.currentClassId = appData.classes[0].id; saveAppSystemData(); loadCurrentClassData();
     }
@@ -2960,6 +2982,8 @@ function cyclePrintGap(axis, index) {
     const current = printSeatGaps[axis][index];
     printSeatGaps[axis][index] = current === 1 ? 3 : current === 3 ? 5 : 1;
     saveCurrentClassData();
+    updateGridRowsVisibility();
+    autoFitText();
     renderPrintLayout({ axis, index });
 }
 
@@ -3490,8 +3514,11 @@ function updateGridRowsVisibility() {
     const visibleCols = Math.max(1, bounds.currMaxC - bounds.currMinC + 1);
     const visibleRows = Math.max(1, bounds.currMaxR - bounds.currMinR + 1);
 
-    grid.style.gridTemplateColumns = `repeat(${visibleCols}, 1fr)`;
-    grid.style.gridTemplateRows = `repeat(${visibleRows}, 1fr)`;
+    const gaps = getVisiblePrintGaps(bounds);
+    const tracks = values => ['minmax(0, 1fr)', ...values.flatMap(n => [`${n * 4}px`, 'minmax(0, 1fr)'])].join(' ');
+    grid.style.gap = '0';
+    grid.style.gridTemplateColumns = tracks(gaps.columns);
+    grid.style.gridTemplateRows = tracks(gaps.rows);
     for (let i = 0; i < TOTAL_SEATS; i++) {
         const seatEl = getSeatElement(i);
         const row = Math.floor(i / NUM_COLS);
@@ -3504,8 +3531,8 @@ function updateGridRowsVisibility() {
         }
 
         seatEl.style.display = 'flex';
-        seatEl.style.gridColumn = String(col - bounds.currMinC + 1);
-        seatEl.style.gridRow = String(row - bounds.currMinR + 1);
+        seatEl.style.gridColumn = String((col - bounds.currMinC) * 2 + 1);
+        seatEl.style.gridRow = String((row - bounds.currMinR) * 2 + 1);
     }
 }
 
@@ -3980,7 +4007,7 @@ function buildTempStudentsFromRosterTable() {
 }
 
 /**
- * 名簿テーブル・全体ルールを検証し、問題なければ currentStudents と localStorage に反映。
+ * 名簿テーブル・全体ルールを検証し、問題なければ currentStudents と appStorage に反映。
  * ハードNG時は確認モーダル（OKのみ）。ソフト警告時は確認モーダル（done 必須）。
  * @param {(ok: boolean) => void} [done] 非同期完了時（タブ切替の続行など）
  * @returns {boolean} done 未指定時のみ。警告待ちのときは false。
@@ -6328,7 +6355,8 @@ function autoFitText() {
         if (!grid) return;
         grid.style.removeProperty('height');grid.style.removeProperty('flex');
         document.querySelectorAll('#seat-grid .seat-fixed-row').forEach(row=>row.style.removeProperty('height'));
-        const width = grid.clientWidth / NUM_COLS;
+        const visible = getVisiblePrintGaps();
+        const width = (grid.clientWidth - visible.columns.reduce((sum,n)=>sum+n*4,0)) / (visible.columns.length+1);
         document.documentElement.style.setProperty('--seat-min-height', `${Math.max(76,Math.min(130,width*.72))}px`);
         requestAnimationFrame(() => {
             const nRef = computeMainGridNameRefPx();
@@ -7561,13 +7589,13 @@ function saveCurrentClassData() {
         printInactiveMode: printInactiveMode === 'frame' ? 'frame' : 'hide',
         printSeatGaps
     };
-    localStorage.setItem(`${PREFIX}data_${appData.currentClassId}`, JSON.stringify(data));
+    appStorage.setItem(`${PREFIX}data_${appData.currentClassId}`, JSON.stringify(data));
 }
 
 function loadCurrentClassData() {
     invalidateManualSwapEvalCache();
     clearManualMoveSelection({ render: false, hideMessage: false });
-    let dataStr = localStorage.getItem(`${PREFIX}data_${appData.currentClassId}`);
+    let dataStr = appStorage.getItem(`${PREFIX}data_${appData.currentClassId}`);
 
     previewAssignment = null;
     previewInactiveSeatsBackup = null;
@@ -7855,11 +7883,11 @@ function isSekiGaeOwnedStorageKey(key) {
 
 function deleteAllSekiGaeStoredData() {
     const keys = [];
-    for (let index = 0; index < localStorage.length; index++) {
-        const key = localStorage.key(index);
+    for (let index = 0; index < appStorage.length; index++) {
+        const key = appStorage.key(index);
         if (key && isSekiGaeOwnedStorageKey(key)) keys.push(key);
     }
-    keys.forEach(key => localStorage.removeItem(key));
+    keys.forEach(key => appStorage.removeItem(key));
     return keys.length;
 }
 
@@ -7912,7 +7940,7 @@ function closeSampleDeleteInfoModal() {
     }
 }
 
-/** 旧バージョンの localStorage キーを現在の PREFIX に正規化 */
+/** 旧バージョンの appStorage キーを現在の PREFIX に正規化 */
 function normalizeBackupStorageKey(k) {
     const match = String(k).match(/^(?:Sekigae(?:Kun|App)_(?:sample_)?v\d+_|SekiGaeTrial_(?:sample_)?v1_)(system|data_[A-Za-z0-9_-]+)$/);
     return match ? PREFIX + match[1] : null;
@@ -8006,7 +8034,7 @@ async function confirmExportBackup() {
     backupData[`${PREFIX}system`] = JSON.stringify(filteredSystem);
     selectedIds.forEach(id => {
         const key = `${PREFIX}data_${id}`;
-        const val = localStorage.getItem(key);
+        const val = appStorage.getItem(key);
         if (val !== null) backupData[key] = val;
     });
     const d = new Date();
@@ -8072,13 +8100,13 @@ function mergeImportedBackupIntoLocalStorage(fileObj, selectedIds) {
     selectedIds.forEach(id => {
         const key = `${PREFIX}data_${id}`;
         if (fileObj[key] !== undefined && fileObj[key] !== null) {
-            localStorage.setItem(key, fileObj[key]);
+            appStorage.setItem(key, fileObj[key]);
         }
     });
 
     let localSys = { classes: [], currentClassId: '' };
     try {
-        const s = localStorage.getItem(sysKey);
+        const s = appStorage.getItem(sysKey);
         if (s) localSys = JSON.parse(s);
     } catch (e) {}
     if (!Array.isArray(localSys.classes)) localSys.classes = [];
@@ -8097,7 +8125,7 @@ function mergeImportedBackupIntoLocalStorage(fileObj, selectedIds) {
     if (!localSys.classes.some(c => c.id === localSys.currentClassId)) {
         localSys.currentClassId = localSys.classes.length ? localSys.classes[0].id : '';
     }
-    localStorage.setItem(sysKey, JSON.stringify(localSys));
+    appStorage.setItem(sysKey, JSON.stringify(localSys));
 }
 
 async function confirmImportBackup() {
