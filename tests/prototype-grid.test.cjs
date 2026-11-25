@@ -108,3 +108,63 @@ test('sample operations use page memory and leave persistent storage untouched',
     assert.equal(s.storage.get('other-app'),'preserved');
     assert.equal(setup('?sample=1').run("appStorage.getItem(PREFIX+'system')"),null);
 });
+
+test('backup publication is one write and a quota failure preserves both old classes', () => {
+    const s = setup();
+    const prefix = s.run('PREFIX');
+    const first = prefix + 'data_test';
+    const second = prefix + 'data_other';
+    s.storage.set(first, '{"students":[]}');
+    s.storage.set(second, '{"students":[{"id":"02"}]}');
+    s.context.backup = { [first]: '{"students":[{"id":"01"}]}', [second]: '{"students":[]}' };
+    const write = s.context.localStorage.setItem;
+    s.context.localStorage.setItem = () => { throw Error('quota'); };
+    assert.throws(() => s.run("mergeImportedBackupIntoLocalStorage(backup, ['test','other'])"), /quota/);
+    assert.equal(s.context.readClassStorage(first), '{"students":[]}');
+    assert.equal(s.context.readClassStorage(second), '{"students":[{"id":"02"}]}');
+    s.context.localStorage.setItem = write;
+    s.run("mergeImportedBackupIntoLocalStorage(backup, ['test','other'])");
+    assert.equal(s.context.readClassStorage(first), s.context.backup[first]);
+    assert.equal(s.context.readClassStorage(second), s.context.backup[second]);
+});
+
+test('backup validation checks histories and roster identity without requiring past students in the current roster', () => {
+    const { context } = setup();
+    assert.match(context.validateTrialClassData({ histories: {} }, true), /履歴/);
+    assert.match(context.validateTrialClassData({ students: [{ id: 'A01' }, { id: 'a01' }] }, true), /名簿/);
+    const past = Array(42).fill(null);
+    past[1] = { id: 'former' };
+    assert.equal(context.validateTrialClassData({ students: [{ id: 'current' }], histories: [{ assignment: past }] }, true), null);
+});
+
+test('Excel aliases and case-insensitive roster duplicates are rejected', () => {
+    const { context } = setup();
+    assert.match(context.validateExcelImportStep1([['101', '01']], 1, 2, [{ id: '101' }]).error, /1行2列目/);
+    assert.equal(context.validateRosterSaveConstraints([{ id: 'A01' }, { id: 'a01' }], '').ok, false);
+    assert.equal(context.validateRosterSaveConstraints([{ id: '', name: '架空' }], '').ok, false);
+});
+
+test('past front and back use active seats, while an interior column is not a window or corridor', () => {
+    const { context } = setup();
+    const past = Array(42).fill(null);
+    past[7] = { id: '01' };
+    const result = context.buildPastConstraintMaps([{ id: '01' }], [{ assignment: past, inactiveSeats: [1] }]);
+    assert.equal(result.pastFront['01'].length, 1);
+    assert.equal(result.pastBack['01'].length, 0);
+    assert.equal(result.pastWindow['01'].length + result.pastCorridor['01'].length, 0);
+});
+
+test('initial search distinguishes an exhausted search from a deadline', async () => {
+    const s = setup();
+    s.context.performance = { now: () => 10 };
+    const context = {
+        activeSeats: [0, 1],
+        tempStudents: [{ id: '01', allowedSeats: [0] }, { id: '02', allowedSeats: [0] }],
+        random: () => 0.5,
+        canPlaceAt: () => true,
+        safetyContext: { searchEndDeadline: 20, totalEndDeadline: 20 }
+    };
+    assert.equal((await s.context.buildInitialByBacktracking(0, context)).stopReason, 'impossible');
+    context.safetyContext.searchEndDeadline = 10;
+    assert.equal((await s.context.buildInitialByBacktracking(0, context)).stopReason, 'time');
+});

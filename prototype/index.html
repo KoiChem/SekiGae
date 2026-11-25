@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae 試作版</title>
-<link rel="stylesheet" href="styles.css?v=20261125-seat-text-fit">
+<link rel="stylesheet" href="styles.css?v=20261125-review">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -143,7 +143,7 @@
     </div>
 </div>
 
-<div id="import-backup-modal" class="modal-overlay">
+<dialog id="import-backup-modal" class="modal-overlay" aria-label="読み込むクラスを選択">
     <div class="modal-content" style="max-width: 520px;">
         <h2 style="border:none; font-size:1.35em; color: #2c3e50; margin-bottom: 8px;">読み込むクラスを選択</h2>
         <p style="font-size:0.9em; color:#555; margin: 0 0 12px 0; text-align:left;">チェックしたクラスのデータのみ取り込みます（既存の同名クラスは上書き・マージされます）。</p>
@@ -157,9 +157,9 @@
             <button type="button" class="btn" style="padding:10px 22px;" onclick="confirmImportBackup()">読み込む</button>
         </div>
     </div>
-</div>
+</dialog>
 
-<div id="roster-hard-validation-modal" class="modal-overlay roster-hard-validation-modal" style="display: none;" aria-modal="true" role="alertdialog">
+<dialog id="roster-hard-validation-modal" class="modal-overlay roster-hard-validation-modal" aria-modal="true" role="alertdialog" aria-label="名簿の内容を確認してください">
     <div class="modal-content" style="max-width: 560px;">
         <h2 style="border:none; font-size:1.35em; color: #c0392b; margin-bottom: 8px;">名簿の内容を確認してください</h2>
         <p style="font-size: 0.92em; color: #555; margin: 0 0 12px 0; text-align: left;">記法エラーや指定の矛盾があるため、座席表へは進めません。下記を修正してから、もう一度お試しください。</p>
@@ -168,9 +168,9 @@
             <button type="button" class="btn" style="padding: 10px 28px; font-size: 1.1em;" onclick="closeRosterHardValidationModal()">OK</button>
         </div>
     </div>
-</div>
+</dialog>
 
-<div id="soft-validation-modal" class="modal-overlay soft-validation-modal" style="display: none;" aria-modal="true" role="alertdialog">
+<dialog id="soft-validation-modal" class="modal-overlay soft-validation-modal" aria-modal="true" role="alertdialog" aria-label="座席配置の競合リスク">
     <div class="modal-content" style="max-width: 560px;">
         <h2 style="border:none; font-size:1.35em; color: #2c3e50; margin-bottom: 10px;">座席配置の競合リスク</h2>
         <p style="font-size: 0.92em; color: #555; margin: 0 0 10px 0; text-align: left;">以下の設定により、座席配置が不可能になる可能性があります。</p>
@@ -180,9 +180,9 @@
             <button type="button" class="btn" style="padding:10px 22px;" onclick="proceedSoftValidationConfirm()">このまま進む</button>
         </div>
     </div>
-</div>
+</dialog>
 
-<div id="swap-confirm-modal" class="modal-overlay swap-confirm-modal" style="display: none;" aria-modal="true" role="alertdialog">
+<dialog id="swap-confirm-modal" class="modal-overlay swap-confirm-modal" aria-modal="true" role="alertdialog" aria-labelledby="swap-confirm-title">
     <div id="swap-confirm-modal-content" class="modal-content swap-confirm-modal-content" style="max-width: 520px;">
         <h2 id="swap-confirm-title" style="border:none; font-size:1.35em; margin-bottom: 10px;">入れ替えの確認</h2>
         <p id="swap-confirm-message" style="font-size: 0.95em; line-height: 1.55; margin: 0 0 18px 0; text-align: left; white-space: pre-line;"></p>
@@ -191,7 +191,7 @@
             <button type="button" id="swap-confirm-proceed-btn" class="btn" style="padding:10px 22px;" onclick="proceedSwapConfirm()">入れ替える</button>
         </div>
     </div>
-</div>
+</dialog>
 
 <div id="roster-import-mode-modal" class="modal-overlay roster-import-mode-modal" style="display: none;" aria-modal="true" role="alertdialog">
     <div class="modal-content" style="max-width: 520px;">
@@ -261,7 +261,7 @@
     </div>
 </div>
 
-<div id="seat-track-modal" class="modal-overlay" onclick="if(event.target === this) closeSeatTrackModal()">
+<dialog id="seat-track-modal" class="modal-overlay" onclick="if(event.target === this) closeSeatTrackModal()" aria-label="座席追跡">
     <div class="modal-content seat-track-modal-content">
         <h2 style="border:none; font-size:1.15em; color: #2c3e50; margin-bottom: 8px;">座席追跡</h2>
         <div class="seat-track-head">
@@ -285,7 +285,7 @@
             <button class="btn btn-outline" onclick="closeSeatTrackModal()">閉じる</button>
         </div>
     </div>
-</div>
+</dialog>
 
 <div id="print-overlay" class="no-print">
     <div class="print-toolbar-head">
@@ -692,7 +692,7 @@
     </div>
 </div>
 
-<script src="app.js?v=20261117-gaps-sample-v6"></script>
+<script src="app.js?v=20261125-review"></script>
 <dialog id="app-dialog" class="app-dialog" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
     <h2 id="app-dialog-title">確認</h2><p id="app-dialog-message"></p>
     <div class="app-dialog-actions"><button type="button" class="btn btn-outline" id="app-dialog-cancel">キャンセル</button><button type="button" class="btn" id="app-dialog-ok">OK</button></div>

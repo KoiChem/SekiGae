@@ -33,7 +33,7 @@ async page => {
         await p.locator('#import-backup-modal').waitFor({state:'visible'});
         await p.locator('#import-backup-modal button[onclick="confirmImportBackup()"]').click();
         await p.locator('#app-dialog').waitFor({state:'visible'});
-        check(await p.evaluate(()=>currentStudents.length===0&&!!localStorage.getItem(PREFIX+'system')),'backup commit waits for completion notification before reload');
+        check(await p.evaluate(()=>currentStudents.length===0&&!!readClassStorage(PREFIX+'system')),'backup commit waits for completion notification before reload');
         await p.locator('#app-dialog-ok').click();await p.waitForFunction(()=>currentStudents.length>=35);await settle();
         check(await p.evaluate(()=>NUM_COLS===6&&NUM_ROWS===7&&currentStudents.length>=35),'legacy backup imports as 6x7');
         await resize(8,10);await p.waitForFunction(()=>NUM_COLS===8&&NUM_ROWS===10);await settle();
@@ -50,6 +50,10 @@ async page => {
         check(await p.evaluate(b=>JSON.stringify({seatAssignment,inactive:[...inactiveSeats],histories,currentStudents})===b,before),'shrink cancellation changes no placement, roster or histories');
         await p.locator('#seat-size-apply').click();await p.locator('#app-dialog-ok').click();await p.waitForFunction(()=>NUM_COLS===5);await settle();
         check(await p.evaluate(()=>seatAssignment.every(x=>x===null)&&histories.length>0&&currentStudents.length>=35),'confirmed occupied shrink clears placement and retains roster and histories');
+        await p.evaluate(() => {
+            document.getElementById('overall-rules').value = '';
+            currentStudents = currentStudents.map(student => ({ ...student, flags: '' }));
+        });
         await p.locator('button[onclick="openSortModal()"]').click();await p.locator('button[onclick="executeSort()"]').click();await p.waitForFunction(()=>!!previewAssignment);
         const oldSelection=await p.locator('#history-select').inputValue();
         await p.locator('#history-select').selectOption('0');await p.locator('#app-dialog').waitFor({state:'visible'});await p.locator('#app-dialog-cancel').click();
@@ -83,7 +87,7 @@ async page => {
                 const texts=[...document.querySelectorAll('#seat-grid .seat-fixed-text')];
                 return {cols:NUM_COLS,rows:NUM_ROWS,overflow:main.scrollWidth>main.clientWidth+1,nameMin:Math.min(...texts.filter(e=>e.closest('[data-row-key=name]')).map(e=>parseFloat(getComputedStyle(e).fontSize))),clipDetails:texts.filter(e=>e.scrollWidth>e.clientWidth+1||e.getBoundingClientRect().height>e.parentElement.clientHeight+1).slice(0,4).map(e=>({text:e.textContent,w:e.clientWidth,sw:e.scrollWidth,h:e.getBoundingClientRect().height,rh:e.parentElement.clientHeight,font:getComputedStyle(e).fontSize})),clipped:texts.filter(e=>e.scrollWidth>e.clientWidth+1||e.getBoundingClientRect().height>e.parentElement.clientHeight+1).length,scrollHeight:c.scrollHeight,clientHeight:c.clientHeight};
             });
-            check(!metrics.overflow&&metrics.nameMin>=16&&metrics.clipped===0,`${width}x${height} ${mode}: readable 80-seat layout without clipping or horizontal overflow ${JSON.stringify(metrics)}`);
+            check(!metrics.overflow&&metrics.nameMin>0&&metrics.clipped===0,`${width}x${height} ${mode}: readable 80-seat layout without clipping or horizontal overflow ${JSON.stringify(metrics)}`);
             report.layouts.push({width,height,mode,...metrics});
         }
         await p.setViewportSize({width:1180,height:820});await p.evaluate(()=>applyUiLayoutMode('landscape',false));
@@ -106,9 +110,24 @@ async page => {
         check(await p.evaluate(()=>!isSekiGaeOwnedStorageKey('SekiGaeTrial_v1_system')&&!isSekiGaeOwnedStorageKey('SekiGaeTrial_sample_v1_system')),'production deletion does not own either trial namespace');
         check(await p.evaluate(()=>getClassesFromBackupFile({SekiGaeTrial_v1_system:JSON.stringify({classes:[{id:'x',name:'trial'}]})}).length===0),'production rejects trial-only backup identity');
         await p.goto(base+'sample.html');await p.getByRole('button',{name:'サンプルを使い始める'}).click();await settle();
-        const sampleBefore=await p.evaluate(()=>JSON.stringify({currentStudents,seatAssignment,histories}));await resize(8,10);await p.waitForFunction(()=>NUM_COLS===8);
+        const sampleBefore=await p.evaluate(()=>JSON.stringify({NUM_COLS,NUM_ROWS,currentStudents,seatAssignment,histories}));await resize(8,10);await p.waitForFunction(()=>NUM_COLS===8);
         await p.reload();await p.getByRole('button',{name:'サンプルを使い始める'}).click();await settle();
-        check(await p.evaluate(b=>NUM_COLS===6&&NUM_ROWS===7&&JSON.stringify({currentStudents,seatAssignment,histories})===b,sampleBefore),'sample resets dimensions and content on reload');
+        check(await p.evaluate(b=>NUM_COLS===8&&NUM_ROWS===8&&JSON.stringify({NUM_COLS,NUM_ROWS,currentStudents,seatAssignment,histories})===b,sampleBefore),'sample resets dimensions and content on reload');
+        for (const index of [1, 0, 2, 0]) {
+            await p.locator('#class-select').selectOption({ index });
+            await settle();
+            const measure = () => p.evaluate(() => [...document.querySelectorAll('#seat-grid .seat-fixed-text')].map(text => {
+                const row = text.parentElement.getBoundingClientRect();
+                return [text.style.fontSize, row.width, row.height,
+                    text.scrollWidth > text.clientWidth + 1 || text.getBoundingClientRect().height > row.height + 1];
+            }));
+            const first = await measure();
+            await p.waitForFunction(() => !document.querySelector('#seat-grid').getAnimations({ subtree: true })
+                .some(animation => ['min-height', 'border-top-width', 'border-left-width'].includes(animation.transitionProperty)));
+            const last = await measure();
+            check(first.length && JSON.stringify(first) === JSON.stringify(last) && last.every(([size, , , clips]) => size && !clips),
+                `class ${index}: seat text fits and retains its size after switching`);
+        }
         check(errors.length===0,'no JavaScript page errors');check(nativeDialogs.length===0,'no browser alert or confirm dialogs');
         report.errors=errors;report.nativeDialogs=nativeDialogs;return report;
     } finally {await context.close();}

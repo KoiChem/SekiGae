@@ -144,14 +144,59 @@ const appStorage = SAMPLE_MODE ? (() => {
         if (key === 'length') return Object.keys(target).length;
         return target[key];
     }});
-})() : localStorage;
+})() : {
+    getItem: key => localStorage.getItem(key),
+    setItem: (key, value) => localStorage.setItem(key, value),
+    removeItem: key => localStorage.removeItem(key),
+    key: index => localStorage.key(index),
+    get length() { return localStorage.length; }
+};
 const PREFIX = SAMPLE_MODE ? 'SekiGaeTrial_sample_v1_' : 'SekiGaeTrial_v1_';
+const restoredDataKey = PREFIX + 'restored';
+let classReadFailed = false;
+let systemReadFailed = false;
+
+function readRestoredData() {
+    const raw = appStorage.getItem(restoredDataKey);
+    if (raw === null) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('復元データの形式が不正です。');
+    return data;
+}
+
+function readClassStorage(key) {
+    const restored = readRestoredData();
+    return restored && Object.hasOwn(restored, key) ? restored[key] : appStorage.getItem(key);
+}
+
+// 一つの書き込みで公開する。容量不足時は書き込み前の値が残る。
+function writeClassStorageBatch(entries) {
+    const restored = readRestoredData() || {};
+    appStorage.setItem(restoredDataKey, JSON.stringify({ ...restored, ...entries }));
+    // 公開後に旧形式の同一キーだけを除去し、二重に容量を占有しないようにする。
+    for (const key of Object.keys(entries)) {
+        try { appStorage.removeItem(key); }
+        catch (error) { console.warn('旧保存キーの整理エラー', error); }
+    }
+}
+
+function writeClassStorage(key, value) {
+    if (readRestoredData() === null) appStorage.setItem(key, value);
+    else writeClassStorageBatch({ [key]: value });
+}
+
+function reportSaveFailure(error) {
+    console.error('保存エラー', error);
+    showAlert('保存できませんでした。入力内容を残しています。ブラウザの保存設定や空き容量を確認してから、もう一度お試しください。');
+    return false;
+}
+
 const SAMPLE_BACKUP_URL = './meibo_sample.json';
 /** クラス・バックアップとは独立した、この端末での画面表示の好み。 */
 const UI_LAYOUT_STORAGE_KEY = `${PREFIX}ui_layout`;
 let NUM_COLS = 6, NUM_ROWS = 7, TOTAL_SEATS = 42;
 let COLS_LABELS = ['a','b','c','d','e','f'];
-const SHUFFLE_ALGORITHM_VERSION = 'seed-v7-focused-reheat-repair';
+const SHUFFLE_ALGORITHM_VERSION = 'seed-v8-history-edges-and-search-exit';
 const UINT32_MAX = 0xFFFFFFFF;
 /**
  * 初期解を広く生成してから、品質上位と配置が異なる候補だけを焼きなましへ進める。
@@ -1300,7 +1345,10 @@ function applyUiLayoutMode(value, shouldPersist = false) {
             ? '現在は横画面レイアウトです。縦画面レイアウトへ切り替えます'
             : '現在は縦画面レイアウトです。横画面レイアウトへ切り替えます');
     }
-    if (shouldPersist) appStorage.setItem(UI_LAYOUT_STORAGE_KEY, mode);
+    if (shouldPersist) {
+        try { appStorage.setItem(UI_LAYOUT_STORAGE_KEY, mode); }
+        catch (error) { reportSaveFailure(error); }
+    }
 
     if (!document.body.classList.contains('print-mode')) {
         scheduleFitDeskClassName();
@@ -1400,7 +1448,7 @@ function buildSeatTrackHistoryMap(studentId) {
 
 function closeSeatTrackModal() {
     const modal = document.getElementById('seat-track-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) modal.close();
 }
 
 /** 座席追跡モーダル「制約ルール」欄：備考・NG隣接・全体@指定をまとめて HTML 化 */
@@ -1528,7 +1576,8 @@ function openSeatTrackModal(seatIdx) {
         gridEl.appendChild(cell);
     }
 
-    modal.style.display = 'flex';
+    if (!modal.open) modal.showModal();
+    modal.oncancel = event => { event.preventDefault(); closeSeatTrackModal(); };
 }
 
 // タッチのみ独自の長押し操作を使う。マウスは既存の HTML5 D&D を維持する。
@@ -2270,7 +2319,18 @@ function logicalSeatSetsDisjoint(a, b) {
  * 名簿→座席表切替時：記法エラー、個別NGの相手番号、全体ルールの行/列と備考欄 @ の論理交差を検証。
  * @returns {{ ok: true } | { ok: false, html?: string }}
  */
+function normalizeRosterId(id) {
+    return String(id ?? '').trim().toLowerCase();
+}
+
 function validateRosterSaveConstraints(tempStudents, rulesText) {
+    const ids = new Set();
+    for (const student of tempStudents) {
+        const id = normalizeRosterId(student.id);
+        if (!id) return { ok: false, html: '番号が空欄の生徒がいます。番号を入力してください。' };
+        if (ids.has(id)) return { ok: false, html: `番号「${student.id}」が重複しています。` };
+        ids.add(id);
+    }
     const parsedRuleSet = parseOverallRulesText(rulesText);
     if (parsedRuleSet.errors.length > 0) {
         return { ok: false, html: `全体ルールの記法エラー：<br>${parsedRuleSet.errors.join('<br>')}` };
@@ -2609,7 +2669,7 @@ function setRosterHardValidationBodyHtml(html) {
 
 function dismissRosterHardValidationModal() {
     const modal = document.getElementById('roster-hard-validation-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) modal.close();
     rosterHardValidationCloseCallback = null;
     if (rosterHardValidationEscListener) {
         document.removeEventListener('keydown', rosterHardValidationEscListener);
@@ -2632,7 +2692,8 @@ function showRosterHardValidationModal(html, onClose) {
     }
     setRosterHardValidationBodyHtml(html);
     rosterHardValidationCloseCallback = onClose;
-    modal.style.display = 'flex';
+    if (!modal.open) modal.showModal();
+    modal.oncancel = event => { event.preventDefault(); closeRosterHardValidationModal(); };
     if (!rosterHardValidationEscListener) {
         rosterHardValidationEscListener = e => {
             if (e.key === 'Escape' || e.key === 'Esc') closeRosterHardValidationModal();
@@ -2643,7 +2704,7 @@ function showRosterHardValidationModal(html, onClose) {
 
 function dismissSoftValidationModal() {
     const modal = document.getElementById('soft-validation-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) modal.close();
     softValidationProceedCallback = null;
     softValidationCancelCallback = null;
     if (softValidationEscListener) {
@@ -2671,7 +2732,8 @@ function showSoftValidationConfirm(warnings, onProceed, onCancel) {
     ).join('');
     softValidationProceedCallback = onProceed;
     softValidationCancelCallback = onCancel;
-    modal.style.display = 'flex';
+    if (!modal.open) modal.showModal();
+    modal.oncancel = event => { event.preventDefault(); cancelSoftValidationConfirm(); };
     if (!softValidationEscListener) {
         softValidationEscListener = e => {
             if (e.key === 'Escape' || e.key === 'Esc') cancelSoftValidationConfirm();
@@ -2743,22 +2805,24 @@ function cancelRosterImportMode() {
 function finishRosterCommitFromTable(tempStudents) {
     invalidateManualSwapEvalCache();
     clearManualMoveSelection({ render: false, hideMessage: false });
-    currentStudents = tempStudents;
     const studentMap = new Map();
-    currentStudents.forEach(student => {
-        if (student.id) studentMap.set(student.id, student);
+    tempStudents.forEach(student => {
+        if (student.id) studentMap.set(normalizeRosterId(student.id), student);
     });
     const remapAssignment = assignment => assignment.map(seatStudent => {
         if (!seatStudent || !seatStudent.id) return null;
-        return studentMap.get(seatStudent.id) || null;
+        return studentMap.get(normalizeRosterId(seatStudent.id)) || null;
     });
-    seatAssignment = remapAssignment(seatAssignment);
+    const assignment = remapAssignment(seatAssignment);
+    if (!saveCurrentClassData({ students: tempStudents, assignment })) return false;
+    currentStudents = tempStudents;
+    seatAssignment = assignment;
     if (previewAssignment) previewAssignment = remapAssignment(previewAssignment);
-    saveCurrentClassData();
     syncConstraintsBaselineFromPersisted();
     updateCounters();
     clearRosterUndoHistory();
     setRosterDeleteMode(false);
+    return true;
 }
 
 function switchTab(tabId, ev, navOpts) {
@@ -2812,8 +2876,20 @@ function updateCounters() {
 
 // --- クラス管理 ---
 function loadAppSystemData() {
-    const systemDataString = appStorage.getItem(`${PREFIX}system`);
-    if(systemDataString) { try { appData = JSON.parse(systemDataString); } catch(e) {} }
+    systemReadFailed = false;
+    try {
+        const raw = readClassStorage(`${PREFIX}system`);
+        if (raw !== null) {
+            const data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.classes) || data.classes.some(c => !c || typeof c.id !== 'string' || !c.id || typeof c.name !== 'string')) {
+                throw new Error('クラス一覧の形式が不正です。');
+            }
+            appData = data;
+        }
+    } catch (error) {
+        systemReadFailed = true;
+        console.error('クラス一覧読み込みエラー', error);
+    }
     if(!appData || typeof appData !== 'object') appData = { classes: [], currentClassId: '' };
     if(!Array.isArray(appData.classes) || appData.classes.length === 0) {
         appData.classes = [{ id: 'class_default', name: '新しいクラス' }];
@@ -2826,7 +2902,13 @@ function loadAppSystemData() {
     updateClassSelects();
 }
 
-function saveAppSystemData() { appStorage.setItem(`${PREFIX}system`, JSON.stringify(appData)); updateClassSelects(); }
+function saveAppSystemData() {
+    if (systemReadFailed) return reportSaveFailure('クラス一覧の読み込みに失敗しました。');
+    try { writeClassStorage(`${PREFIX}system`, JSON.stringify(appData)); }
+    catch (error) { return reportSaveFailure(error); }
+    updateClassSelects();
+    return true;
+}
 
 function updateClassSelects() {
     const classSelects = [
@@ -2866,24 +2948,39 @@ function switchClass(selectId = 'class-select') {
     if (!sourceSelect) return;
     if(sourceSelect.value === appData.currentClassId) return;
     clearManualMoveSelection({ render: false, hideMessage: false });
-    saveCurrentClassData();
+    const previousId = appData.currentClassId;
+    if (!classReadFailed && !saveCurrentClassData()) { updateClassSelects(); return; }
     appData.currentClassId = sourceSelect.value;
-    saveAppSystemData(); loadCurrentClassData();
+    if (!saveAppSystemData()) {
+        appData.currentClassId = previousId;
+        updateClassSelects();
+        return;
+    }
+    loadCurrentClassData();
 }
 
 function saveClassName() {
     const cls = appData.classes.find(c => c.id === appData.currentClassId);
     if (!cls) { showAlert("クラスが見つかりません。ページを再読み込みしてください。"); return; }
+    const previousName = cls.name;
     cls.name = document.getElementById('class-name-input').value.trim() || '名称未設定';
-    saveAppSystemData();
+    if (!saveAppSystemData()) { cls.name = previousName; return; }
     updateClassNameDisplay();
     showAlert("クラス名を変更しました。", "success");
 }
 
 function createNewClass() {
-    saveCurrentClassData(); const newId = 'class_' + Date.now();
+    if (!classReadFailed && !saveCurrentClassData()) return;
+    const previousId = appData.currentClassId;
+    const newId = 'class_' + Date.now();
     appData.classes.push({ id: newId, name: '新しいクラス' });
-    appData.currentClassId = newId; saveAppSystemData(); loadCurrentClassData();
+    appData.currentClassId = newId;
+    if (!saveAppSystemData()) {
+        appData.classes.pop();
+        appData.currentClassId = previousId;
+        return;
+    }
+    loadCurrentClassData();
 }
 
 /** クラス単位の設定（全体ルール・公平化）を UI ごとデフォルトに戻す */
@@ -2909,19 +3006,61 @@ function resetClassScopedSettingsUI() {
 async function deleteCurrentClass() {
     if(appData.classes.length <= 1) return await appAlert("最後のクラスは削除できません。");
     if(await appConfirm(`本当に「${document.getElementById('class-name-input').value}」を削除しますか？\n履歴もすべて消去されます。`,'クラスを削除')) {
-        appStorage.removeItem(`${PREFIX}data_${appData.currentClassId}`);
-        appData.classes = appData.classes.filter(c => c.id !== appData.currentClassId);
-        appData.currentClassId = appData.classes[0].id; saveAppSystemData(); loadCurrentClassData();
+        const classes = appData.classes.filter(c => c.id !== appData.currentClassId);
+        const next = { classes, currentClassId: classes[0].id };
+        if (systemReadFailed) return reportSaveFailure('クラス一覧の読み込みに失敗しました。');
+        const key = PREFIX + 'data_' + appData.currentClassId;
+        try { writeClassStorageBatch({ [PREFIX + 'system']: JSON.stringify(next), [key]: null }); }
+        catch (error) { return reportSaveFailure(error); }
+        appData = next;
+        updateClassSelects();
+        loadCurrentClassData();
     }
 }
 
 // --- グリッド初期化 ---
+function focusBoardSeat(seat) {
+    const previous = document.querySelector('#seat-grid .seat[tabindex="0"]');
+    if (previous) previous.tabIndex = -1;
+    seat.tabIndex = 0;
+}
+
+function onBoardSeatKey(event, index) {
+    if (document.body.classList.contains('print-mode')) return;
+    const key = event.key;
+    const dr = (key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0) * (isStudentView ? 1 : -1);
+    const dc = (key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1 : 0) * (isStudentView ? -1 : 1);
+    if (dr || dc) {
+        event.preventDefault();
+        const row = Math.floor(index / NUM_COLS) + dr;
+        const col = index % NUM_COLS + dc;
+        if (row >= 0 && row < NUM_ROWS && col >= 0 && col < NUM_COLS) getSeatElement(row * NUM_COLS + col)?.focus();
+    } else if (key === 'Enter' || key === ' ') {
+        event.preventDefault();
+        const assignment = getCurrentAssignmentForDrag();
+        if (!exceptionMode && manualMoveSourceIdx !== null && manualMoveSourceIdx !== index && assignment[index]) {
+            requestSeatDrop(manualMoveSourceIdx, index);
+        } else if (!exceptionMode && manualMoveSourceIdx === null && assignment[index] && !inactiveSeats.has(index)) {
+            startManualMoveSelection(index, true);
+        } else handleSeatClick(index);
+    } else if ((key === 'ContextMenu' || (key === 'F10' && event.shiftKey)) && !exceptionMode) {
+        event.preventDefault();
+        openSeatTrackModal(index);
+    }
+}
+
 function initGrid() {
     cancelSeatTouchGesture();
     const grid = document.getElementById('seat-grid'); grid.innerHTML = '';
     for (let i = 0; i < TOTAL_SEATS; i++) {
         const seat = document.createElement('div');
         seat.className = 'seat'; seat.dataset.index = i; seat.onclick = () => handleSeatClick(i);
+        seat.setAttribute('role', 'button');
+        seat.setAttribute('aria-label', getSeatLabel(i));
+        seat.setAttribute('aria-keyshortcuts', 'Enter Space Shift+F10');
+        seat.tabIndex = i === 0 ? 0 : -1;
+        seat.addEventListener('focus', () => focusBoardSeat(seat));
+        seat.addEventListener('keydown', event => onBoardSeatKey(event, i));
         seat.draggable = true; seat.ondragstart = (e) => dragStart(e, i); seat.ondragover = (e) => dragOver(e);
         seat.ondragleave = (e) => dragLeave(e, i); seat.ondragend = () => dragEnd(); seat.ondrop = (e) => drop(e, i);
         seat.oncontextmenu = (e) => handleSeatContextMenu(e, i);
@@ -2960,13 +3099,13 @@ function toggleView() {
     scheduleFitDeskClassName();
 }
 
-function normalizePrintSeatGaps(value) {
+function normalizePrintSeatGaps(value, cols = NUM_COLS, rows = NUM_ROWS) {
     const normalize = (axis, count) => Array.from({ length: count }, (_, index) => {
         const multiplier = Array.isArray(value?.[axis]) ? value[axis][index] : 1;
         if (multiplier === 1.5 || multiplier === 2 || multiplier === 3) return 3;
         return multiplier === 5 ? 5 : 1;
     });
-    return { columns: normalize('columns', NUM_COLS - 1), rows: normalize('rows', NUM_ROWS - 1) };
+    return { columns: normalize('columns', cols - 1), rows: normalize('rows', rows - 1) };
 }
 
 function getVisiblePrintGaps(bounds = getGridBoundaries()) {
@@ -4022,13 +4161,13 @@ function commitRosterFromTableToStoredState(done) {
     }
     const soft = checkSoftConstraintsWarning(tempStudents, rulesText);
     if (soft.warnings.length === 0) {
-        finishRosterCommitFromTable(tempStudents);
-        if (done) done(true);
-        return true;
+        const saved = finishRosterCommitFromTable(tempStudents);
+        if (done) done(saved);
+        return saved;
     }
     const onProceed = () => {
-        finishRosterCommitFromTable(tempStudents);
-        if (done) done(true);
+        const saved = finishRosterCommitFromTable(tempStudents);
+        if (done) done(saved);
     };
     const onCancel = () => { if (done) done(false); };
     if (done) {
@@ -4250,6 +4389,23 @@ function validateForSort() {
     return true;
 }
 
+let sortPreview = null;
+
+function validateSortAssignment(assignment) {
+    const rules = document.getElementById('overall-rules').value.trim();
+    const parsed = parseOverallRulesText(rules);
+    if (parsed.errors.length) return false;
+    const students = currentStudents.map(student => ({ ...student }));
+    if (students.some(student => parsePersonalRuleConstraints(student.flags).errors.length)) return false;
+    assignPlacementRulesToStudents(students, parsed);
+    if (!prepareStudentSeatConstraintsSilent(students, false, getGridBoundaries())) return false;
+    const ng = buildNgPairsMap(students, rules);
+    const adjacent = buildAdjacentIncludingDiagonalMap();
+    return createAssignmentHardValidator(students, (seats, student, index) =>
+        student.allowedSeats.includes(index) && adjacent[index].every(i =>
+            !seats[i] || !ng[student.id].has(seats[i].id)))(assignment);
+}
+
 function executeSort() {
     closeSortModal(); hideAlert();
     clearManualMoveSelection({ render: false, hideMessage: false });
@@ -4281,7 +4437,12 @@ function executeSort() {
     const tempAssign = new Array(TOTAL_SEATS).fill(null);
     for (let i = 0; i < sortedStudents.length; i++) tempAssign[validScanOrder[i]] = sortedStudents[i];
 
+    if (!validateSortAssignment(tempAssign)) {
+        showAlert('番号順の配置は必須ルールを満たしません。固定席・行列指定・NGを確認するか、シャッフル／市松を使ってください。');
+        return;
+    }
     previewAssignment = tempAssign;
+    sortPreview = tempAssign;
     clearPendingHistoryShuffleMeta();
     setActionButtons(true, false);
     showAlert(`整列が完了しました。プレビューを確認し、「座席を確定」を押してください。`, "success");
@@ -4415,15 +4576,14 @@ function buildPastConstraintMaps(students, historyList) {
         const historyEdgeMax = history.edgeMax ?? edgeMax;
         const historyMinRowByCol = Array(cols).fill(rows);
         const historyMaxRowByCol = Array(cols).fill(-1);
-        let historyMinCol = cols - 1, historyMaxCol = 0;
+        const historyInactive = getInactiveSetForHistoryEntry(history);
+        const historyMinCol = 0, historyMaxCol = cols - 1;
         for (let i = 0; i < total; i++) {
-            if (history.assignment[i]) {
+            if (!historyInactive.has(i)) {
                 const row = Math.floor(i / cols);
                 const col = i % cols;
                 if (row < historyMinRowByCol[col]) historyMinRowByCol[col] = row;
                 if (row > historyMaxRowByCol[col]) historyMaxRowByCol[col] = row;
-                if (col < historyMinCol) historyMinCol = col;
-                if (col > historyMaxCol) historyMaxCol = col;
             }
         }
         const singleHistCol = historyMinCol === historyMaxCol;
@@ -5110,12 +5270,17 @@ async function buildInitialByBacktracking(attemptIndex, context) {
     for (let r = 0; r < attemptIndex; r++) seedList = shuffleArray(seedList, context.random);
     const unassigned = seedList;
     let nodeCount = 0;
+    let stopReason = null;
 
     async function dfs() {
-        if (isShuffleCancelled) return false;
-        if (!hasSearchTimeRemaining(context.safetyContext)) return false;
+        if (isShuffleCancelled) { stopReason = 'cancelled'; return false; }
+        if (!hasSearchTimeRemaining(context.safetyContext)) { stopReason = 'time'; return false; }
         nodeCount++;
-        if (nodeCount > SEEDED_SEARCH_BUDGETS.initialNodesPerStart) return false;
+        if (nodeCount > SEEDED_SEARCH_BUDGETS.initialNodesPerStart) { stopReason = 'nodes'; return false; }
+        if (nodeCount % SEEDED_SEARCH_BUDGETS.yieldEveryInitialNodes === 0) {
+            showProgressModal("初期解を構築中...", context.safetyContext);
+            await yieldToBrowser();
+        }
         if (unassigned.length === 0) return true;
 
         let bestIdx = -1;
@@ -5156,30 +5321,33 @@ async function buildInitialByBacktracking(attemptIndex, context) {
 
             assignment[seatIdx] = null;
             availableSeats.add(seatIdx);
+            if (stopReason) break;
         }
 
         unassigned.splice(bestIdx, 0, selected);
-        if (nodeCount % SEEDED_SEARCH_BUDGETS.yieldEveryInitialNodes === 0) {
-            showProgressModal("初期解を構築中...", context.safetyContext);
-            await yieldToBrowser();
-        }
         return false;
     }
 
     const ok = await dfs();
-    return ok ? assignment : null;
+    return { assignment: ok ? assignment : null, stopReason: ok ? null : stopReason || 'impossible' };
 }
 async function runPhaseAInitialSolutions(maxStarts, timelineContext, backtrackingContext) {
     const initialSolutions = [];
+    let stopReason = null;
     for (let attempt = 0; attempt < maxStarts; attempt++) {
         if (isShuffleCancelled) return null;
-        if (!hasSearchTimeRemaining(timelineContext)) break;
+        if (!hasSearchTimeRemaining(timelineContext)) { stopReason = 'time'; break; }
         showProgressModal(`初期解を構築中 (${attempt + 1}/${maxStarts})...`, timelineContext);
         await yieldToBrowser();
-        const sol = await buildInitialByBacktracking(attempt, backtrackingContext);
-        if (sol) initialSolutions.push([...sol]);
+        const result = await buildInitialByBacktracking(attempt, backtrackingContext);
+        if (result.assignment) initialSolutions.push(result.assignment);
+        else {
+            stopReason = result.stopReason;
+            if (stopReason === 'cancelled') return null;
+            if (stopReason !== 'nodes') break;
+        }
     }
-    return initialSolutions;
+    return { initialSolutions, stopReason };
 }
 
 /** 同じ生徒が同じ席にいる数ではなく、席の割り当てが異なる数を返す。大きいほど多様。 */
@@ -5685,7 +5853,7 @@ function computeCheckerboardConflictsAt(offset, tempStudents, parsedOverallRules
                 return;
             }
             s.appliedOverallRules = [];
-            parsedOverallRules.forEach(r => { if (s.id.startsWith(r.prefix)) s.appliedOverallRules.push(r); });
+            parsedOverallRules.forEach(r => { if (studentIdMatchesPrefix(s.id, r.prefix)) s.appliedOverallRules.push(r); });
             s.appliedGlobalNgRules = parsedRuleSet.ngRules;
             const cands = calcAllowedSeatsForStudent(s, true, bounds);
             if (cands.length === 0) localConflicts.push(s);
@@ -5819,7 +5987,7 @@ function computeProtectedExceptionSeats() {
         });
         parsedRuleSet.placementRules.forEach(rule => {
             if (rule.kind !== 'seat') return;
-            if (!s.id || !s.id.startsWith(rule.prefix)) return;
+            if (!s.id || !studentIdMatchesPrefix(s.id, rule.prefix)) return;
             rule.values.forEach(seatIdx => {
                 if (getDefaultSeatGender(seatIdx) === s.gender) result.add(seatIdx);
             });
@@ -5864,7 +6032,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
         const dups = [];
         let hasEmpty = false;
         currentStudents.forEach(s => {
-            const id = (s.id || '').trim();
+            const id = normalizeRosterId(s.id);
             if (!id) { hasEmpty = true; return; }
             if (idSet.has(id)) { if (!dups.includes(id)) dups.push(id); }
             else idSet.add(id);
@@ -5895,7 +6063,7 @@ async function prepareShuffle(isCheckerboard, opts = {}) {
             return;
         }
         s.appliedOverallRules = [];
-        parsedOverallRules.forEach(r => { if (s.id.startsWith(r.prefix)) s.appliedOverallRules.push(r); });
+        parsedOverallRules.forEach(r => { if (studentIdMatchesPrefix(s.id, r.prefix)) s.appliedOverallRules.push(r); });
         s.appliedGlobalNgRules = parsedRuleSet.ngRules;
         let cands = calcAllowedSeatsForStudent(s, isCheckerboard, bounds);
         if (cands.length === 0) conflicts.push(s);
@@ -6140,12 +6308,16 @@ async function executeSmartShuffle(tempStudents, isCheckerboard, shuffleRun) {
         // 2) 初期解構築フェーズ（複数スタート候補をバックトラックで生成）
 
         const timelineMetrics = { phaseAStart: performance.now(), phaseAEndActual: 0, tAfterA: 0, phaseBEndActual: 0, phaseCEndActual: 0, phaseDEndActual: 0, phaseEEndActual: 0 };
-        const initialSolutions = await runPhaseAInitialSolutions(MULTI_START_TARGET, timelineContext, backtrackingContext);
-        if (initialSolutions == null) return abortShuffleWithMessage();
+        const initial = await runPhaseAInitialSolutions(MULTI_START_TARGET, timelineContext, backtrackingContext);
+        if (initial == null) return abortShuffleWithMessage();
+        const { initialSolutions, stopReason } = initial;
         timelineMetrics.phaseAEndActual = performance.now();
 
         if (initialSolutions.length === 0) {
-            return abortShuffleWithMessage("ハード制約を満たす初期解を生成できませんでした。条件を緩めて再実行してください。", "error");
+            const message = stopReason === 'impossible'
+                ? '現在の必須ルールでは配置できません。固定席・空席・NGを確認してください。'
+                : '探索の制限内に配置を見つけられませんでした。再実行するか、条件を見直してください。';
+            return abortShuffleWithMessage(message, "error");
         }
 
         const initialSelection = selectInitialSolutionsForAnnealing(initialSolutions, evaluateAssignment);
@@ -6309,6 +6481,10 @@ function renderAssignments() {
         seatEl.classList.remove('gender-boy', 'gender-girl');
         updateOverallRulePin(seatEl, null, parsedOverallRules);
         updateNgMagnet(seatEl, null, ngMap);
+        const occupant = currentData[i];
+        const label = inactiveSeats.has(i) ? '空席（無効）' : occupant?.name || '空席（有効）';
+        const selection = manualMoveSourceIdx === i ? '、移動元に選択中' : '';
+        seatEl.setAttribute('aria-label', `${getSeatLabel(i)}、${label}${selection}`);
         if (inactiveSeats.has(i)) {
             seatEl.classList.add('inactive');
             seatEl.classList.add('inactive-hidden');
@@ -6406,35 +6582,58 @@ function syncLandscapeScreenGridAspect() {
 }
 
 function commitSeats() {
-    if(!previewAssignment) return;
-    clearManualMoveSelection({ render: false, hideMessage: false });
-    invalidateManualSwapEvalCache();
-    const previewPointDetails = getPreviewPointDetails();
+    if (!previewAssignment) return;
+    const rosterIds = currentStudents.map(student => normalizeRosterId(student.id));
+    const seatIds = previewAssignment.filter(Boolean).map(student => normalizeRosterId(student.id));
+    const knownIds = new Set(rosterIds);
+    if (knownIds.has('') || knownIds.size !== rosterIds.length || new Set(seatIds).size !== seatIds.length ||
+        seatIds.some(id => !knownIds.has(id)) || previewAssignment.length !== TOTAL_SEATS ||
+        previewAssignment.some((student, index) => student && inactiveSeats.has(index))) {
+        return showAlert('配置に重複した番号、名簿にない番号、または無効な座席があります。名簿と配置を確認してください。');
+    }
+    if (previewAssignment === sortPreview && !validateSortAssignment(previewAssignment)) {
+        return showAlert('番号順の配置が必須ルールを満たしません。配置内容を確認してください。');
+    }
+
+    const assignment = [...previewAssignment];
     const memo = pendingHistoryMemoOnCommit || '';
-    pendingHistoryMemoOnCommit = null;
     const shuffleMeta = pendingHistoryShuffleMeta ? { ...pendingHistoryShuffleMeta } : null;
+    const candidate = shuffleCandidates[shuffleCandidateIndex];
+    const previousCandidate = candidate && { ...candidate };
     if (shuffleMeta) {
-        shuffleMeta.totalScore = coerceStoredTotalScore(previewPointDetails ? previewPointDetails.totalScore : null)
-            ?? coerceStoredTotalScore(shuffleMeta.totalScore);
+        const details = getPreviewPointDetails();
+        shuffleMeta.totalScore = coerceStoredTotalScore(details?.totalScore) ?? coerceStoredTotalScore(shuffleMeta.totalScore);
         updateCurrentShuffleCandidate(shuffleMeta.totalScore, true);
     }
-    seatAssignment = [...previewAssignment]; previewAssignment = null;
+    const historyEntry = {
+        ...getGridDimensions(), edgeMin, edgeMax,
+        date: new Date().toLocaleString(),
+        assignment: [...assignment],
+        memo,
+        inactiveSeats: Array.from(inactiveSeats),
+        ...shuffleMeta
+    };
+    const nextHistories = [historyEntry, ...histories].slice(0, 20);
+    if (!saveCurrentClassData({ assignment, histories: nextHistories, inactiveSeats: historyEntry.inactiveSeats })) {
+        if (candidate) Object.assign(candidate, previousCandidate);
+        return;
+    }
+
+    clearManualMoveSelection({ render: false, hideMessage: false });
+    invalidateManualSwapEvalCache();
+    seatAssignment = assignment;
+    histories = nextHistories;
+    previewAssignment = null;
+    sortPreview = null;
+    pendingHistoryMemoOnCommit = null;
     clearPendingHistoryShuffleMeta();
     previewInactiveSeatsBackup = null;
     clearManualSwapUndoStack();
     setActionButtons(false, false);
-    const historyEntry = {
-        ...getGridDimensions(), edgeMin, edgeMax,
-        date: new Date().toLocaleString(),
-        assignment: [...seatAssignment],
-        memo,
-        inactiveSeats: Array.from(inactiveSeats)
-    };
-    if (shuffleMeta) Object.assign(historyEntry, shuffleMeta);
-    histories.unshift(historyEntry);
-    if(histories.length > 20) histories.pop();
     document.getElementById('history-select').value = '';
-    saveCurrentClassData(); updateHistorySelect(); renderAssignments(); showAlert("座席を確定し、履歴に保存しました。", "success");
+    updateHistorySelect();
+    renderAssignments();
+    showAlert("座席を確定し、履歴に保存しました。", "success");
 }
 
 function cancelPreview() {
@@ -6665,14 +6864,19 @@ function validateExcelImportStep1(grid, rows, cols, students) {
     for (let er = 0; er < rows; er++) {
         for (let ec = 0; ec < cols; ec++) {
             const st = resolved[er][ec];
-            if (st && (st.id || '').trim()) matchedIds.add((st.id || '').trim());
+            if (!st) continue;
+            const id = normalizeRosterId(st.id);
+            if (matchedIds.has(id)) {
+                return { ok: false, error: `${er + 1}行${ec + 1}列目は番号「${st.id}」と重複しています。` };
+            }
+            matchedIds.add(id);
         }
     }
     const missingIds = [];
     for (const s of students) {
         const id = (s.id || '').trim();
         if (!id) continue;
-        if (!matchedIds.has(id)) missingIds.push(id);
+        if (!matchedIds.has(normalizeRosterId(id))) missingIds.push(id);
     }
     if (missingIds.length) {
         const list = missingIds.slice(0, 12).join(', ');
@@ -7284,8 +7488,8 @@ function clearManualMoveSelection(options = {}) {
     if (render) renderAssignments();
 }
 
-function startManualMoveSelection(index) {
-    if (document.body.classList.contains('print-mode') || exceptionMode || isCalculating || inactiveSeats.size === 0) return;
+function startManualMoveSelection(index, allowSwap = false) {
+    if (document.body.classList.contains('print-mode') || exceptionMode || isCalculating || (!allowSwap && inactiveSeats.size === 0)) return;
     const assignment = getCurrentAssignmentForDrag();
     if (inactiveSeats.has(index) || !assignment[index]) return;
     manualMoveSourceIdx = index;
@@ -7296,10 +7500,12 @@ function startManualMoveSelection(index) {
         document.addEventListener('keydown', manualMoveEscListener);
     }
     renderAssignments();
-    showAlert('移動先の空席を選んでください。同じ生徒をもう一度選ぶと解除できます。', 'info');
+    showAlert(allowSwap ? '移動先の空席または入れ替える生徒を選んでください。Escで解除できます。'
+        : '移動先の空席を選んでください。同じ生徒をもう一度選ぶと解除できます。', 'info');
 }
 
 function applyPreviewRelocation(fromIdx, toIdx) {
+    sortPreview = null;
     if (!previewAssignment) {
         previewAssignment = [...seatAssignment];
         setActionButtons(true, false);
@@ -7348,7 +7554,7 @@ function requestManualRelocation(fromIdx, toIdx) {
 function dismissSwapConfirmModal() {
     const modal = document.getElementById('swap-confirm-modal');
     if (modal) {
-        modal.style.display = 'none';
+        modal.close();
         modal.classList.remove('swap-confirm-modal--hard', 'swap-confirm-modal--soft');
     }
     swapConfirmProceedCallback = null;
@@ -7375,7 +7581,8 @@ function showSwapConfirmModal(mode, message, proceedLabel, onProceed, onCancel, 
     proceedBtn.textContent = proceedLabel;
     swapConfirmProceedCallback = onProceed;
     swapConfirmCancelCallback = onCancel;
-    modal.style.display = 'flex';
+    if (!modal.open) modal.showModal();
+    modal.oncancel = event => { event.preventDefault(); cancelSwapConfirm(); };
     if (!swapConfirmEscListener) {
         swapConfirmEscListener = e => {
             if (e.key === 'Escape' || e.key === 'Esc') cancelSwapConfirm();
@@ -7401,6 +7608,7 @@ function getCurrentAssignmentForDrag() {
 }
 
 function applyPreviewSwap(idx1, idx2) {
+    sortPreview = null;
     if (!previewAssignment) {
         previewAssignment = [...seatAssignment];
         setActionButtons(true, false);
@@ -7570,7 +7778,8 @@ function requestSeatDrop(fromIdx, targetIdx) {
 }
 
 // --- データ保存・復元拡張 ---
-function saveCurrentClassData() {
+function saveCurrentClassData(overrides = {}) {
+    if (classReadFailed || systemReadFailed) return reportSaveFailure('読み込みに失敗した保存データは保持されています。');
     syncSoftScoresFromInputs();
     const appearance = readSeatAppearanceSettingsFromMainUi();
     // プレビュー中の空席移動は、確定するまで保存データへ混ぜない。
@@ -7589,13 +7798,28 @@ function saveCurrentClassData() {
         printInactiveMode: printInactiveMode === 'frame' ? 'frame' : 'hide',
         printSeatGaps
     };
-    appStorage.setItem(`${PREFIX}data_${appData.currentClassId}`, JSON.stringify(data));
+    try { writeClassStorage(`${PREFIX}data_${appData.currentClassId}`, JSON.stringify({ ...data, ...overrides })); }
+    catch (error) { return reportSaveFailure(error); }
+    return true;
 }
 
 function loadCurrentClassData() {
     invalidateManualSwapEvalCache();
     clearManualMoveSelection({ render: false, hideMessage: false });
-    let dataStr = appStorage.getItem(`${PREFIX}data_${appData.currentClassId}`);
+    classReadFailed = false;
+    let data = null;
+    try {
+        const raw = readClassStorage(`${PREFIX}data_${appData.currentClassId}`);
+        if (raw !== null) {
+            const parsed = JSON.parse(raw);
+            const error = validateTrialClassData(parsed);
+            if (error) throw new Error(error);
+            data = parsed;
+        }
+    } catch (error) {
+        classReadFailed = true;
+        console.error('クラス読み込みエラー', error);
+    }
 
     previewAssignment = null;
     previewInactiveSeatsBackup = null;
@@ -7604,9 +7828,8 @@ function loadCurrentClassData() {
     lastBackupAt = '';
     printSeatGaps = normalizePrintSeatGaps();
     setActionButtons(false, false);
-    if (dataStr) {
+    if (data) {
         try {
-            const data = JSON.parse(dataStr);
             const dimensions = getHistoryDimensions(data);
             setGridDimensions(dimensions.cols, dimensions.rows);
             initGrid();
@@ -7650,8 +7873,12 @@ function loadCurrentClassData() {
                 totalScore: coerceStoredTotalScore(h.totalScore)
             }));
             shuffleCandidates = loadShuffleCandidates(data.shuffleCandidates);
-        } catch(e) { console.error("データ読み込みエラー", e); }
-    } else {
+        } catch (error) {
+            classReadFailed = true;
+            console.error('クラス読み込みエラー', error);
+        }
+    }
+    if (!data || classReadFailed) {
         setGridDimensions(6, 7); initGrid();
         currentStudents = []; inactiveSeats.clear(); seatAssignment = new Array(TOTAL_SEATS).fill(null); histories = []; shuffleCandidates = [];
         printInactiveMode = 'hide';
@@ -7659,11 +7886,13 @@ function loadCurrentClassData() {
         lastBackupAt = '';
         resetClassScopedSettingsUI();
         applySeatLayoutToUI(null);
+        applySeatColorCssVariablesAndSwatches();
     }
     clearRosterUndoHistory();
     setRosterDeleteMode(false);
     document.querySelector('#students-table tbody').innerHTML = ''; currentStudents.forEach(s => addRowToTable(s, { recordUndo: false }));
-    updateColors(); updateHistorySelect(); updateCounters();
+    syncPrintSettingsPanel(readSeatAppearanceSettingsFromMainUi());
+    updateHistorySelect(); updateCounters();
     updateClassNameDisplay();
     updatePrintInactiveToggleUi();
     syncShuffleCandidateControls();
@@ -7671,6 +7900,24 @@ function loadCurrentClassData() {
     updateSeatSizeButton();
     renderAssignments();
     syncConstraintsBaselineFromPersisted();
+    if (classReadFailed || systemReadFailed) {
+        const key = PREFIX + (systemReadFailed ? 'system' : 'data_' + appData.currentClassId);
+        showAlert('保存データを読み込めませんでした。元のデータを保持しています。バックアップを確認してください。', 'error', {
+            label: '元のデータを書き出す',
+            onClick: () => {
+                try {
+                    let raw;
+                    try { raw = readClassStorage(key); }
+                    catch { raw = appStorage.getItem(restoredDataKey); }
+                    if (raw === null) return showAlert('書き出せるデータがありません。');
+                    const link = document.createElement('a');
+                    link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(raw);
+                    link.download = 'SekiGae_試作版_復旧用.txt';
+                    link.click();
+                } catch (error) { reportSaveFailure(error); }
+            }
+        });
+    } else hideAlert();
 }
 
 function updateHistorySelect() {
@@ -7719,19 +7966,19 @@ async function requestHistorySelectionToBoard() {
         sel.value = sel.dataset.appliedValue || '';
         return false;
     }
-    applyHistorySelectionToBoard();
-    return true;
+    return applyHistorySelectionToBoard() !== false;
 }
 
 /** プルダウンで選んだ履歴の座席・空席を確定盤面として反映（グレー予約状態にはしない） */
 function applyHistorySelectionToBoard() {
-    clearPendingHistoryShuffleMeta();
-    invalidateManualSwapEvalCache();
-    clearManualMoveSelection({ render: false, hideMessage: false });
     const sel = document.getElementById('history-select');
     if (!sel) return;
     const selectedIndex = sel.value;
     if (selectedIndex === '' || !histories[selectedIndex]) {
+        clearPendingHistoryShuffleMeta();
+        invalidateManualSwapEvalCache();
+        clearManualMoveSelection({ render: false, hideMessage: false });
+
         previewAssignment = null;
         previewInactiveSeatsBackup = null;
         pendingHistoryMemoOnCommit = null;
@@ -7742,8 +7989,17 @@ function applyHistorySelectionToBoard() {
     }
     const history = histories[selectedIndex];
     const dimensions = getHistoryDimensions(history);
+    const gaps = normalizePrintSeatGaps(printSeatGaps, dimensions.cols, dimensions.rows);
+    if (!saveCurrentClassData({ ...dimensions, assignment: history.assignment, inactiveSeats: history.inactiveSeats || [],
+        printSeatGaps: gaps, shuffleCandidates: [] })) {
+        sel.value = sel.dataset.appliedValue || '';
+        return false;
+    }
+    clearPendingHistoryShuffleMeta();
+    invalidateManualSwapEvalCache();
+    clearManualMoveSelection({ render: false, hideMessage: false });
     setGridDimensions(dimensions.cols, dimensions.rows);
-    printSeatGaps = normalizePrintSeatGaps(printSeatGaps);
+    printSeatGaps = gaps;
     shuffleCandidates = [];
     initGrid(); updateSeatSizeButton();
     seatAssignment = [...history.assignment];
@@ -7758,7 +8014,6 @@ function applyHistorySelectionToBoard() {
     }
     setActionButtons(false, false);
     sel.dataset.appliedValue = selectedIndex;
-    saveCurrentClassData();
     updateCounters();
     renderAssignments();
 }
@@ -7785,8 +8040,9 @@ function saveHistoryMemo() {
         return showAlert('メモを保存する履歴を選択してください。', 'info');
     }
     const memo = (memoInput.value || '').slice(0, 10);
-    histories[selectedIndex].memo = memo;
-    saveCurrentClassData();
+    const next = histories.map((history, index) => index === Number(selectedIndex) ? { ...history, memo } : history);
+    if (!saveCurrentClassData({ histories: next })) return;
+    histories = next;
     updateHistorySelect();
     showAlert(memo ? 'メモを保存しました。' : 'メモを削除しました。', 'success');
 }
@@ -7794,9 +8050,11 @@ async function deleteSelectedHistory() {
     const selectedIndex = document.getElementById('history-select').value;
     if(selectedIndex === "" || !histories[selectedIndex]) return await appAlert("削除する履歴がありません。");
     if(await appConfirm(`選択した履歴（${histories[selectedIndex].date}）を削除しますか？`,'履歴を削除')) {
-        histories.splice(selectedIndex, 1);
+        const next = histories.filter((_, index) => index !== Number(selectedIndex));
+        if (!saveCurrentClassData({ histories: next })) return;
+        histories = next;
         invalidateManualSwapEvalCache();
-        saveCurrentClassData(); updateHistorySelect();
+        updateHistorySelect();
         applyHistorySelectionToBoard();
         showAlert("指定した履歴を削除しました。", "success");
     }
@@ -7804,11 +8062,12 @@ async function deleteSelectedHistory() {
 async function clearAllHistories() {
     if(histories.length === 0 && shuffleCandidates.length === 0) return await appAlert("削除する履歴がありません。");
     if(await appConfirm("【確認】過去の座席履歴とシャッフル候補をすべて削除します。\nペアの重複制限やローテーション制限もクリアされます。\n（新学期や席替えルールのリセットに最適です）\nよろしいですか？","履歴をリセット")) {
+        if (!saveCurrentClassData({ histories: [], shuffleCandidates: [] })) return;
         histories = [];
         shuffleCandidates = [];
         clearPendingHistoryShuffleMeta();
         invalidateManualSwapEvalCache();
-        saveCurrentClassData(); updateHistorySelect();
+        updateHistorySelect();
         applyHistorySelectionToBoard();
         showAlert("全履歴をリセットしました。", "success");
     }
@@ -8032,11 +8291,17 @@ async function confirmExportBackup() {
     const filteredSystem = buildFilteredSystemForExport(selectedIds);
     const backupData = {};
     backupData[`${PREFIX}system`] = JSON.stringify(filteredSystem);
-    selectedIds.forEach(id => {
-        const key = `${PREFIX}data_${id}`;
-        const val = appStorage.getItem(key);
-        if (val !== null) backupData[key] = val;
-    });
+    try {
+        selectedIds.forEach(id => {
+            const key = `${PREFIX}data_${id}`;
+            const val = readClassStorage(key);
+            backupData[key] = val ?? JSON.stringify({ students: [] });
+        });
+    } catch (error) {
+        console.error('バックアップ書き出しエラー', error);
+        await appAlert('保存データを読み込めなかったため、バックアップを書き出せませんでした。');
+        return;
+    }
     const d = new Date();
     const yymmdd = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
     const a = document.createElement('a');
@@ -8074,12 +8339,14 @@ async function openImportBackupModal() {
         label.appendChild(document.createTextNode(` ${c.name || c.id}`));
         container.appendChild(label);
     });
-    document.getElementById('import-backup-modal').style.display = 'flex';
+    const modal = document.getElementById('import-backup-modal');
+    if (!modal.open) modal.showModal();
+    modal.oncancel = event => { event.preventDefault(); closeImportBackupModal(); };
 }
 
 function closeImportBackupModal() {
     const el = document.getElementById('import-backup-modal');
-    if (el) el.style.display = 'none';
+    if (el) el.close();
     pendingImportBackupData = null;
 }
 
@@ -8097,19 +8364,11 @@ function mergeImportedBackupIntoLocalStorage(fileObj, selectedIds) {
         try { fileSystem = JSON.parse(fileObj[sysKey]); } catch (e) {}
     }
 
-    selectedIds.forEach(id => {
-        const key = `${PREFIX}data_${id}`;
-        if (fileObj[key] !== undefined && fileObj[key] !== null) {
-            appStorage.setItem(key, fileObj[key]);
-        }
-    });
-
-    let localSys = { classes: [], currentClassId: '' };
-    try {
-        const s = appStorage.getItem(sysKey);
-        if (s) localSys = JSON.parse(s);
-    } catch (e) {}
-    if (!Array.isArray(localSys.classes)) localSys.classes = [];
+    const rawSystem = readClassStorage(sysKey);
+    const localSys = rawSystem === null ? { classes: [], currentClassId: '' } : JSON.parse(rawSystem);
+    if (!localSys || !Array.isArray(localSys.classes) || localSys.classes.some(c => !c || typeof c.id !== 'string')) {
+        throw new Error('現在のクラス一覧を読み込めません。');
+    }
 
     selectedIds.forEach(id => {
         let name = id;
@@ -8122,10 +8381,16 @@ function mergeImportedBackupIntoLocalStorage(fileObj, selectedIds) {
         else localSys.classes.push({ id, name });
     });
 
-    if (!localSys.classes.some(c => c.id === localSys.currentClassId)) {
+    if (SAMPLE_MODE && !selectedIds.includes(localSys.currentClassId)) {
+        localSys.currentClassId = selectedIds[0];
+    } else if (!localSys.classes.some(c => c.id === localSys.currentClassId)) {
         localSys.currentClassId = localSys.classes.length ? localSys.classes[0].id : '';
     }
-    appStorage.setItem(sysKey, JSON.stringify(localSys));
+    const entries = Object.fromEntries(selectedIds.map(id => {
+        const key = PREFIX + 'data_' + id;
+        return [key, fileObj[key]];
+    }));
+    writeClassStorageBatch({ ...entries, [sysKey]: JSON.stringify(localSys) });
 }
 
 async function confirmImportBackup() {
@@ -8140,11 +8405,22 @@ async function confirmImportBackup() {
     }
     const importError = validateImportedTrialBackup(pendingImportBackupData, selectedIds);
     if (importError) { await appAlert(`読み込めません。${importError}\n現在のデータは変更していません。`);return; }
-    mergeImportedBackupIntoLocalStorage(pendingImportBackupData, selectedIds);
+    try { mergeImportedBackupIntoLocalStorage(pendingImportBackupData, selectedIds); }
+    catch (error) {
+        console.error('バックアップ読込エラー', error);
+        await appAlert('復元を保存できませんでした。元のデータは変更していません。');
+        return;
+    }
     pendingImportBackupData = null;
     closeImportBackupModal();
     const fileInput = document.getElementById('import-file');
     if (fileInput) fileInput.value = '';
+    if (SAMPLE_MODE) {
+        loadAppSystemData();
+        loadCurrentClassData();
+        await appAlert('サンプルに復元しました。ページを再読み込みすると初期状態に戻ります。');
+        return;
+    }
     await appAlert('復元完了しました。ページを再読み込みします。');
     location.reload();
 }
@@ -8299,12 +8575,20 @@ async function applySeatResize() {
         if (plan.clearPlacement) messages.push('配置済みの席が変更後の範囲外になります。現在の配置をクリアして変更します。名簿・確定履歴は残ります。');
         if (previewAssignment) messages.push('未確定の配置は破棄されます。');
         if (messages.length && !(await appConfirm(messages.join('\n'),plan.clearPlacement ? '配置をクリアして変更' : '破棄して変更'))) return false;
+        const gaps = normalizePrintSeatGaps(printSeatGaps, cols, rows);
+        if (!saveCurrentClassData({ cols, rows, assignment: plan.assignment,
+            inactiveSeats: [...plan.inactiveSeats], shuffleCandidates: [], printSeatGaps: gaps })) {
+            const error = document.getElementById('seat-size-error');
+            error.textContent = '保存できませんでした。ブラウザの設定や空き容量を確認してください。';
+            error.hidden = false;
+            return false;
+        }
         clearManualMoveSelection({render:false,hideMessage:false});invalidateManualSwapEvalCache();
         previewAssignment=null;previewInactiveSeatsBackup=null;clearPendingHistoryShuffleMeta();pendingHistoryMemoOnCommit=null;
         clearManualSwapUndoStack();inactiveSeatBackup.clear();currentExceptions.clear();shuffleCandidates=[];lastShuffleLog=null;
         setGridDimensions(cols,rows);seatAssignment=plan.assignment;inactiveSeats=plan.inactiveSeats;
-        printSeatGaps=normalizePrintSeatGaps(printSeatGaps);initGrid();setActionButtons(false,false);updateCounters();updateSeatSizeButton();
-        saveCurrentClassData();updateHistorySelect();
+        printSeatGaps=gaps;initGrid();setActionButtons(false,false);updateCounters();updateSeatSizeButton();
+        updateHistorySelect();
         const historySelect=document.getElementById('history-select');historySelect.value='';historySelect.dataset.appliedValue='';
         syncHistoryMemoInput();updateDeskTitleDisplay();updateHistorySelectTitle();renderAssignments();closeSeatSizeModal();
         showAlert(`座席数を横${cols}列×縦${rows}行に変更しました。`,'success');return true;
@@ -8351,23 +8635,55 @@ document.addEventListener('keydown',event=>{
 },true);
 
 /** 読込責任を持つ箇所で、選択した全クラスを保存前に検証する。 */
-function validateTrialClassData(data) {
+function validTrialStudentList(students, allowEmptySeats, strictIds = true) {
+    if (!Array.isArray(students)) return false;
+    const ids = new Set();
+    for (const student of students) {
+        if (student === null && allowEmptySeats) continue;
+        if (!student || typeof student !== 'object' || Array.isArray(student)) return false;
+        if (['id', 'name', 'kana', 'gender', 'attr1', 'attr2', 'flags'].some(key =>
+            student[key] != null && typeof student[key] !== 'string')) return false;
+        const id = student.id?.trim().toLowerCase();
+        if (strictIds && (!id || ids.has(id))) return false;
+        ids.add(id);
+    }
+    return true;
+}
+
+function validateTrialClassData(data, strictIds = false) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return 'クラスデータの形式が不正です。';
+    if (data.students !== undefined && !validTrialStudentList(data.students, false, strictIds)) return '名簿の形式または番号が不正です。';
+    if ((data.histories !== undefined && !Array.isArray(data.histories)) ||
+        (data.shuffleCandidates !== undefined && !Array.isArray(data.shuffleCandidates))) return '履歴または候補の形式が不正です。';
     const snapshots = [data, ...(Array.isArray(data.histories) ? data.histories : []), ...(Array.isArray(data.shuffleCandidates) ? data.shuffleCandidates : [])];
     for (const entry of snapshots) {
-        if (!entry || typeof entry !== 'object') return '履歴の形式が不正です。';
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+            ['memo', 'date'].some(key => entry[key] != null && typeof entry[key] !== 'string')) return '履歴の形式が不正です。';
         if ((entry.cols !== undefined || entry.rows !== undefined) && !validGridDimensions(entry.cols,entry.rows)) return '座席数は横4〜8列、縦4〜10行である必要があります。';
         const {cols,rows}=getHistoryDimensions(entry), total=cols*rows;
         if (entry.assignment !== undefined && (!Array.isArray(entry.assignment) || entry.assignment.length !== total)) return '座席数と配置データの長さが一致しません。';
+        if (entry.assignment !== undefined && !validTrialStudentList(entry.assignment, true, strictIds)) return '配置の生徒データまたは番号が不正です。';
         if (entry.inactiveSeats !== undefined && (!Array.isArray(entry.inactiveSeats) || entry.inactiveSeats.some(i=>!Number.isInteger(i)||i<0||i>=total))) return '空席データが座席の範囲外です。';
     }
     return null;
 }
 function validateImportedTrialBackup(fileObj, selectedIds) {
+    const system = fileObj[PREFIX + 'system'];
+    if (system !== undefined) {
+        try {
+            const data = JSON.parse(system);
+            const classes = data?.classes;
+            if (!Array.isArray(classes) || classes.some(entry => !entry || typeof entry.id !== 'string' ||
+                !entry.id || typeof entry.name !== 'string') || new Set(classes.map(entry => entry.id)).size !== classes.length) {
+                return 'クラス一覧の形式が不正です。';
+            }
+        } catch { return 'クラス一覧を解析できません。'; }
+    }
     for (const id of selectedIds) {
+        if (!/^[A-Za-z0-9_-]+$/.test(id)) return 'クラス番号の形式が不正です。';
         const raw=fileObj[`${PREFIX}data_${id}`];
         if (typeof raw !== 'string') return '選択したクラスのデータがありません。';
-        try {const error=validateTrialClassData(JSON.parse(raw));if(error)return error;} catch {return 'クラスデータを解析できません。';}
+        try {const error=validateTrialClassData(JSON.parse(raw), true);if(error)return error;} catch {return 'クラスデータを解析できません。';}
     }
     return null;
 }

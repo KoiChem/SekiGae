@@ -1847,3 +1847,16 @@ body.ui-layout-portrait #tab-main > .settings-bottom { order:5; margin-top:8px; 
 body.ui-layout-portrait #btn-commit.is-action-hidden,
 body.ui-layout-portrait #btn-cancel-preview.is-action-hidden { visibility:visible; }
 body.ui-layout-portrait .preview-action-buttons.is-action-group-empty { display:contents; }
+
+
+dialog.modal-overlay {
+    margin: 0;
+    border: 0;
+    padding: 0;
+    max-width: none;
+    max-height: none;
+}
+dialog.modal-overlay[open] { display: flex; }
+dialog.modal-overlay::backdrop { background: transparent; }
+#seat-grid .seat:focus-visible { outline: 3px solid #2563eb; outline-offset: -4px; }
+@media print { .modal-overlay { display: none !important; } }
