@@ -933,7 +933,9 @@ body.ui-layout-landscape .settings-action-slot .shuffle-candidate-controls .btn 
 .seat {
     aspect-ratio: 4/3; background: var(--seat-bg); border: 2px solid var(--seat-border); border-radius: 0;
     cursor: pointer; display: flex; flex-direction: column; justify-content: center; padding: 5px;
-    position: relative; overflow: hidden; transition: 0.2s; user-select: none;
+    position: relative; overflow: hidden; user-select: none;
+    /* 文字の自動調整は最終寸法で行うため、座席の寸法は即時に反映する。 */
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, outline-color 0.2s;
 }
 /* Safari の文字選択・長押しメニューが座席操作と競合しないよう、子要素にも適用。 */
 .seat, .seat * {
