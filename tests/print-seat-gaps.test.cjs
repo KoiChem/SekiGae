@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
 function setup() {
     const context = vm.createContext({ NUM_COLS: 6, NUM_ROWS: 7, saves: 0, renders: 0,
-        saveCurrentClassData() { context.saves++; }, renderPrintLayout() { context.renders++; } });
+        saveCurrentClassData() { context.saves++; }, updateGridRowsVisibility() {}, autoFitText() {}, renderPrintLayout() { context.renders++; } });
     for (const name of ['normalizePrintSeatGaps', 'getVisiblePrintGaps', 'cyclePrintGap']) {
         const start = source.indexOf(`function ${name}(`);
         assert.ok(start >= 0, `${name} exists`);

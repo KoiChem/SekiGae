@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const target = path.join(__dirname, '../prototype/app.js');
-const source = fs.readFileSync(fs.existsSync(target) ? target : path.join(__dirname, '../app.js'), 'utf8');
+const target = path.join(__dirname, '../app.js');
+const source = fs.readFileSync(target, 'utf8');
 function setup(search = '') {
     const storage = new Map();
     const elements = new Map();

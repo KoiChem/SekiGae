@@ -1,13 +1,38 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {setup}=require('./prototype-harness.cjs');
-test('prototype storage and deletion are disjoint from both production and sample',()=>{
-    const s=setup(); const p=s.run('PREFIX');
-    assert.doesNotMatch(p,/^Sekigae(?:Kun|App)_(?:sample_)?v\d+_/);
-    assert.equal(s.context.isSekiGaeOwnedStorageKey('SekigaeKun_v6_system'),false);
-    assert.equal(s.context.isSekiGaeOwnedStorageKey('SekiGae_ui_layout'),false);
-    assert.equal(s.context.isSekiGaeOwnedStorageKey(p+'system'),true);
-    assert.notEqual(p,setup('?sample=1').run('PREFIX'));
+test('official storage owns both old regular namespaces but stays separate from sample',()=>{
+    const s=setup();
+    assert.equal(s.run('PREFIX'),'SekigaeKun_v7_');
+    assert.equal(s.context.isSekiGaeOwnedStorageKey('SekigaeKun_v6_data_class_default'),true);
+    assert.equal(s.context.isSekiGaeOwnedStorageKey('SekiGaeTrial_v1_data_class_default'),true);
+    assert.equal(s.context.isSekiGaeOwnedStorageKey('SekigaeKun_sample_v7_system'),false);
+    assert.equal(s.context.isSekiGaeOwnedStorageKey('unrelated_app_key'),false);
+    assert.equal(setup('?sample=1').context.isSekiGaeOwnedStorageKey('SekigaeKun_v7_system'),false);
+});
+test('migration keeps same-ID regular and trial classes without writing into either old namespace',()=>{
+    const s=setup();
+    const old='SekigaeKun_v6_', trial='SekiGaeTrial_v1_';
+    const system = JSON.stringify({classes:[{id:'x',name:'架空クラス'}],currentClassId:'x'});
+    const regular = JSON.stringify({students:[{id:'01',name:'旧版'}]});
+    const prototype = JSON.stringify({cols:8,rows:8,students:[{id:'01',name:'試作版'}]});
+    s.storage.set(old+'system',system);
+    s.storage.set(old+'data_x',regular);
+    s.storage.set(trial+'restored',JSON.stringify({[trial+'system']:system,[trial+'data_x']:prototype}));
+    const prefix=s.run('PREFIX');
+    const write=s.context.localStorage.setItem;
+    s.context.localStorage.setItem=()=>{throw Error('quota');};
+    assert.throws(()=>s.context.migratePreviousClassData(),/quota/);
+    assert.equal(s.context.readClassStorage(prefix+'system'),null);
+    assert.equal(s.storage.get(old+'data_x'),regular);
+    s.context.localStorage.setItem=write;
+    s.context.migratePreviousClassData();
+    assert.equal(s.context.readClassStorage(prefix+'data_x'),regular);
+    assert.equal(s.context.readClassStorage(prefix+'data_x_trial'),prototype);
+    assert.equal(JSON.parse(s.context.readClassStorage(prefix+'system')).currentClassId,'x');
+    const snapshot=s.storage.get(prefix+'restored');
+    s.context.migratePreviousClassData();
+    assert.equal(s.storage.get(prefix+'restored'),snapshot);
 });
 test('grid expansion preserves coordinates rather than flat indexes',()=>{
     const s=setup(); assert.equal(typeof s.context.planSeatResize,'function');

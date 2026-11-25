@@ -1,8 +1,7 @@
 // Run with Playwright MCP browser_run_code_unsafe. The current tab selects local/public base.
 async page => {
     const origin = new URL(page.url());
-    const root = origin.origin + origin.pathname.split('/prototype/')[0];
-    const base = root + '/prototype/';
+    const base = new URL('./', origin).href;
     const context = await page.context().browser().newContext({acceptDownloads:true});
     const p = await context.newPage(), errors=[], nativeDialogs=[];
     p.on('pageerror',e=>errors.push(e.message));
@@ -25,10 +24,17 @@ async page => {
     };
     try {
         await p.setViewportSize({width:1366,height:1024});await p.goto(base+'index.html');await p.waitForFunction(()=>typeof currentStudents!=='undefined');
-        await p.evaluate(()=>{localStorage.setItem('SekigaeKun_v5_data_class_default',JSON.stringify({students:[{id:'prod',name:'既存版のみ'}]}));localStorage.setItem('SekiGae_ui_layout','portrait');localStorage.setItem('SekigaeKun_v6_sentinel','preserve');});
-        await p.reload();await p.waitForFunction(()=>typeof currentStudents!=='undefined');
-        check(await p.evaluate(()=>currentStudents.length===0&&document.body.classList.contains('ui-layout-landscape')),'production fallback and layout setting are isolated');
-        const fixture=await p.evaluate(async()=>JSON.stringify(await(await fetch('../meibo_sample.json')).json()));
+        check(await p.evaluate(()=>currentStudents.length===0&&document.body.classList.contains('ui-layout-landscape')),'official edition starts clean in a new browser');
+        const fixture=await p.evaluate(async()=>{
+            const data=await(await fetch('meibo_sample.json')).json();
+            const [,cls]=JSON.parse(data.SekiGaeTrial_sample_v1_system).classes;
+            const raw=JSON.parse(data['SekiGaeTrial_sample_v1_data_'+cls.id]);
+            for (const entry of [raw,...raw.histories]) { delete entry.cols; delete entry.rows; }
+            return JSON.stringify({
+                SekigaeKun_v6_system:JSON.stringify({classes:[cls],currentClassId:cls.id}),
+                ['SekigaeKun_v6_data_'+cls.id]:JSON.stringify(raw)
+            });
+        });
         await p.locator('#import-file').setInputFiles({name:'legacy.json',mimeType:'application/json',buffer:Buffer.from(fixture)});
         await p.locator('#import-backup-modal').waitFor({state:'visible'});
         await p.locator('#import-backup-modal button[onclick="confirmImportBackup()"]').click();
@@ -71,7 +77,7 @@ async page => {
         const downloadEvent=p.waitForEvent('download');await p.locator('#export-backup-modal button[onclick="confirmExportBackup()"]').click();const dl=await downloadEvent;
         const stream=await dl.createReadStream();let backup='';for await(const chunk of stream)backup+=chunk.toString();
         const exported=JSON.parse(backup);
-        check(dl.suggestedFilename().includes('試作版')&&Object.keys(exported).every(k=>k.startsWith('SekiGaeTrial_')),'trial export has distinct filename and storage identity');
+        check(/^SekiGae_\d+\.json$/.test(dl.suggestedFilename())&&Object.keys(exported).every(k=>k.startsWith('SekigaeKun_v7_')),'trial export has distinct filename and storage identity');
         await p.locator('#import-file').setInputFiles({name:'trial.json',mimeType:'application/json',buffer:Buffer.from(backup)});
         await p.locator('#import-backup-modal').waitFor({state:'visible'});await p.locator('#import-backup-modal button[onclick="confirmImportBackup()"]').click();await p.locator('#app-dialog').waitFor({state:'visible'});await p.locator('#app-dialog-ok').click();await p.waitForFunction(()=>NUM_COLS===5&&NUM_ROWS===10);
         check(await p.evaluate(()=>histories.length>0&&seatAssignment.every(x=>x===null)),'trial backup roundtrip preserves resized empty board and old history');
@@ -103,12 +109,15 @@ async page => {
         await injectFixture(16,4,4);check(await p.evaluate(()=>document.querySelectorAll('#seat-grid .seat').length===16),'minimum 4x4 grid loads');
         await injectFixture(35,5,7);check(await p.evaluate(()=>collectMovableCompletePairSeatGroups(currentStudents).every(([a,b])=>Math.floor(a/5)===Math.floor(b/5))),'5-column pairing stays within each row');
         await injectFixture(49,7,7);check(await p.evaluate(()=>NUM_COLS===7&&NUM_ROWS===7),'7x7 grid loads');
-        // Delete isolation in both directions with actual ownership functions.
-        await p.evaluate(()=>{localStorage.setItem('SekiGaeTrial_sample_v1_marker','keep');deleteAllSekiGaeStoredData();});
-        check(await p.evaluate(()=>localStorage.getItem('SekigaeKun_v6_sentinel')==='preserve'&&localStorage.getItem('SekiGaeTrial_sample_v1_marker')==='keep'),'trial deletion preserves production and trial sample data');
-        await p.goto(root+'/index.html');await p.waitForFunction(()=>typeof isSekiGaeOwnedStorageKey==='function');
-        check(await p.evaluate(()=>!isSekiGaeOwnedStorageKey('SekiGaeTrial_v1_system')&&!isSekiGaeOwnedStorageKey('SekiGaeTrial_sample_v1_system')),'production deletion does not own either trial namespace');
-        check(await p.evaluate(()=>getClassesFromBackupFile({SekiGaeTrial_v1_system:JSON.stringify({classes:[{id:'x',name:'trial'}]})}).length===0),'production rejects trial-only backup identity');
+        await p.evaluate(()=>{
+            localStorage.setItem('SekiGaeTrial_sample_v1_marker','keep');
+            localStorage.setItem('unrelated_app_sentinel','keep');
+            localStorage.setItem('SekiGaeTrial_v1_sentinel','remove');
+            deleteAllSekiGaeStoredData();
+        });
+        check(await p.evaluate(()=>localStorage.getItem('unrelated_app_sentinel')==='keep'
+            &&localStorage.getItem('SekiGaeTrial_sample_v1_marker')==='keep'
+            &&localStorage.getItem('SekiGaeTrial_v1_sentinel')===null),'official deletion covers migrated sources and preserves sample and unrelated data');
         await p.goto(base+'sample.html');await p.getByRole('button',{name:'サンプルを使い始める'}).click();await settle();
         const sampleBefore=await p.evaluate(()=>JSON.stringify({NUM_COLS,NUM_ROWS,currentStudents,seatAssignment,histories}));await resize(8,10);await p.waitForFunction(()=>NUM_COLS===8);
         await p.reload();await p.getByRole('button',{name:'サンプルを使い始める'}).click();await settle();

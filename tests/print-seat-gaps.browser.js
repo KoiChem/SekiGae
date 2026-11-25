@@ -6,7 +6,7 @@ async page => {
     const p = await context.newPage();
     const errors = [];
     p.on('pageerror', e => errors.push(e.message));
-    const base = 'http://127.0.0.1:8765';
+    const base = new URL('./', page.url()).href.replace(/\/$/, '');
     const assert = (value, message) => { if (!value) throw new Error(message); };
     const settle = async () => p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
     const state = () => p.evaluate(() => JSON.parse(JSON.stringify(printSeatGaps)));
@@ -32,7 +32,14 @@ async page => {
         await p.waitForFunction(() => typeof appData !== 'undefined');
         await p.evaluate(async () => {
             const fixture = await (await fetch('meibo_sample.json')).json();
-            for (const [key,value] of Object.entries(fixture)) localStorage.setItem(key.replace('SekigaeKun_sample_v6_', PREFIX),value);
+            const system = JSON.parse(fixture.SekiGaeTrial_sample_v1_system);
+            system.currentClassId = system.classes[1].id;
+            localStorage.setItem(PREFIX + 'system', JSON.stringify(system));
+            for (const cls of system.classes) {
+                const data = JSON.parse(fixture['SekiGaeTrial_sample_v1_data_' + cls.id]);
+                delete data.printSeatGaps;
+                localStorage.setItem(PREFIX + 'data_' + cls.id, JSON.stringify(data));
+            }
             loadAppSystemData(); loadCurrentClassData();
             window.__originalClass = appData.currentClassId;
             window.__originalInactive = [...inactiveSeats];
@@ -109,7 +116,7 @@ async page => {
         assert((await state()).rows.every(x=>x===5),'reload retains saved settings');
         await p.locator('#history-select').selectOption('1');
         assert((await state()).rows.every(x=>x===5),'history restore leaves class gap setting unchanged');
-        assert(await p.evaluate(b=>getComputedStyle(document.getElementById('seat-grid')).gridTemplateColumns===b.main,before),'normal grid spacing unchanged');
+        assert(await p.evaluate(()=>getComputedStyle(document.getElementById('seat-grid')).gridTemplateColumns.split(' ').filter((_,i)=>i%2).every(n=>n==='20px')),'main grid shares saved 5x gaps');
         await p.evaluate(()=>openExportBackupModal());
         const downloadEvent = p.waitForEvent('download');
         await p.evaluate(()=>confirmExportBackup());
@@ -117,13 +124,13 @@ async page => {
         const stream=await download.createReadStream(); let backupText='';
         for await(const chunk of stream) backupText+=chunk.toString();
         const backup=JSON.parse(backupText);
-        assert(JSON.parse(backup[`SekigaeKun_v6_data_${original}`]).printSeatGaps.columns.every(x=>x===5),'export contains gap settings');
+        assert(JSON.parse(backup[`SekigaeKun_v7_data_${original}`]).printSeatGaps.columns.every(x=>x===5),'export contains gap settings');
         await p.evaluate(({backup,original})=>{
             localStorage.clear(); mergeImportedBackupIntoLocalStorage(backup,[original]);loadAppSystemData();loadCurrentClassData();
         },{backup,original});
         assert((await state()).rows.every(x=>x===5),'backup import restores gap settings');
         const legacyBackup = JSON.parse(JSON.stringify(backup));
-        const legacyKey = `SekigaeKun_v6_data_${original}`;
+        const legacyKey = `SekigaeKun_v7_data_${original}`;
         const legacyClass = JSON.parse(legacyBackup[legacyKey]);
         legacyClass.printSeatGaps.columns[0] = 1.5;
         legacyClass.printSeatGaps.rows[0] = 2;
@@ -234,15 +241,17 @@ async page => {
         }
         await p.goto(`${base}/sample.html`);
         await p.getByRole('button',{name:'サンプルを使い始める'}).click();
-        assert((await state()).columns.every(x=>x===1),'sample starts at 1x');
+        const normalBefore = await p.evaluate(() => localStorage.getItem('SekigaeKun_v7_restored'));
+        await p.locator('#class-select').selectOption({index:1});
+        await p.evaluate(()=>{printSeatGaps=normalizePrintSeatGaps();renderAssignments();});
         await p.getByRole('button',{name:'印刷プレビュー',exact:true}).click(); await settle();
         await clickGap('columns',1,3); await clickGap('columns',1,5);
         await p.locator('#btn-print-view-toggle').click();
         await p.locator('input[name="print-orientation"][value="portrait"]').check(); await settle();
         assert((await state()).columns[1]===5,'sample retains 5x across view and orientation');
         await p.reload(); await p.getByRole('button',{name:'サンプルを使い始める'}).click();
-        assert((await state()).columns.every(x=>x===1),'sample reload resets changes');
-        assert(await p.evaluate(original=>JSON.parse(localStorage.getItem(`SekigaeKun_v6_data_${original}`)).printSeatGaps.columns.every(x=>x===5),original),'sample leaves normal class data intact');
+        assert(await p.evaluate(()=>getCurrentClassName()==='人気アニメ'),'sample reload resets class selection');
+        assert(await p.evaluate(saved=>localStorage.getItem('SekigaeKun_v7_restored')===saved,normalBefore),'sample leaves normal class data intact');
         report.sample='passed';
         assert(errors.length===0,`page errors: ${errors.join(',')}`);
         report.pageErrors=errors;

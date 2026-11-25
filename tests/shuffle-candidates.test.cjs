@@ -60,18 +60,18 @@ test('ten latest candidates retain independent arrangements and inactive seats',
     assert.deepEqual(s.snapshot('shuffleCandidates[0].inactiveSeats'), [41]);
 });
 
-test('restoring an older candidate is an exact preview and never confirms it', () => {
+test('restoring an older candidate is an exact preview and never confirms it', async () => {
     const s = setup(); s.record(1);
     s.run('[seatAssignment[0],seatAssignment[1]] = [seatAssignment[1],seatAssignment[0]]'); s.record(2);
-    assert.equal(s.context.restoreShuffleCandidate(1), true);
+    assert.equal(await s.context.restoreShuffleCandidate(1), true);
     assert.equal(s.run('previewAssignment[0].id'), '01');
     assert.equal(s.run('seatAssignment[0].id'), '02');
     assert.equal(s.run('histories.length'), 0);
     assert.equal(s.run('pendingHistoryShuffleMeta.seed'), 1);
     assert.equal(s.run('shuffleCandidateIndex'), 1);
-    assert.equal(s.context.restoreShuffleCandidate(0), true);
+    assert.equal(await s.context.restoreShuffleCandidate(0), true);
     assert.equal(s.run('previewAssignment[0].id'), '02');
-    assert.equal(s.context.restoreShuffleCandidate(2), false);
+    assert.equal(await s.context.restoreShuffleCandidate(2), false);
 });
 
 test('manual edits survive candidate navigation including relocation of empty seats', () => {
@@ -85,10 +85,10 @@ test('manual edits survive candidate navigation including relocation of empty se
     assert.equal(s.run('histories.length'), 0);
 });
 
-test('roster and rule changes block stale candidate restoration without touching the board', () => {
+test('roster and rule changes block stale candidate restoration without touching the board', async () => {
     for (const change of ["currentStudents[0].id = '03'", "document.getElementById('overall-rules').value = '前列'"]) {
         const s = setup(); s.record(1); s.run('previewAssignment = null'); s.run(change);
-        assert.equal(s.context.restoreShuffleCandidate(0), false);
+        assert.equal(await s.context.restoreShuffleCandidate(0), false);
         assert.equal(s.run('previewAssignment'), null);
         assert.equal(s.run('histories.length'), 0);
     }
@@ -96,7 +96,7 @@ test('roster and rule changes block stale candidate restoration without touching
 
 test('candidate storage round trip preserves snapshots, and legacy or invalid entries are ignored', () => {
     const s = setup(); s.record(1); s.context.saveCurrentClassData();
-    const stored = JSON.parse(s.storage.get('SekigaeKun_v6_data_test'));
+    const stored = JSON.parse(s.storage.get(s.run('PREFIX') + 'data_test'));
     assert.equal(stored.shuffleCandidates.length, 1);
     assert.equal(typeof s.context.loadShuffleCandidates, 'function');
     s.context.payload = stored.shuffleCandidates;
@@ -155,7 +155,7 @@ test('clicking an empty seat preserves candidate edits and cancellation keeps co
     s.run('getSeatElement = () => ({classList:{add(){},remove(){}}})');
     s.context.handleSeatClick(40);
     assert.deepEqual(s.snapshot('shuffleCandidates[0].inactiveSeats'), [41, 40]);
-    const stored = JSON.parse(s.storage.get('SekigaeKun_v6_data_test'));
+    const stored = JSON.parse(s.storage.get(s.run('PREFIX') + 'data_test'));
     assert.deepEqual(stored.shuffleCandidates[0].inactiveSeats, [41, 40]);
     assert.deepEqual(stored.inactiveSeats, [41]);
     s.context.cancelPreview();

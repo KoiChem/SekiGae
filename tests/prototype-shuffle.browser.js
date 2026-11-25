@@ -1,9 +1,9 @@
 async page => {
-    const url=new URL(page.url()),root=url.origin+url.pathname.split('/prototype/')[0];
+    const base=new URL('./',page.url());
     const context=await page.context().browser().newContext();const p=await context.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));
     const report=[];const assert=(v,m)=>{if(!v)throw new Error(m)};
     try {
-        await p.goto(root+'/prototype/index.html');await p.waitForFunction(()=>typeof currentStudents!=='undefined');
+        await p.goto(new URL('index.html',base).href);await p.waitForFunction(()=>typeof currentStudents!=='undefined');
         for(const [cols,rows,checkerboard,historyCount] of [[8,10,false,20],[5,7,true,5]]){
             await p.evaluate(({cols,rows,historyCount})=>{
                 setGridDimensions(cols,rows);

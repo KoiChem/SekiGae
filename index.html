@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20261028-print-seat-gaps-v3">
+<link rel="stylesheet" href="styles.css?v=20261125-official">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -113,8 +113,8 @@
 
 <div id="delete-all-data-modal" class="modal-overlay delete-all-data-modal" style="display:none;" aria-modal="true" role="alertdialog" aria-labelledby="delete-all-data-title">
     <div class="modal-content delete-all-data-modal-content" style="max-width: 560px;">
-        <h2 id="delete-all-data-title">このブラウザのSekiGaeデータをすべて削除しますか？</h2>
-        <p>全クラスのクラス名、名簿、座席配置、履歴、シャッフル候補、ルール、表示・印刷設定を削除します。元に戻せません。</p>
+        <h2 id="delete-all-data-title">このブラウザの通常版データをすべて削除しますか？</h2>
+        <p>全クラスのクラス名、名簿、座席配置、履歴、シャッフル候補、ルール、表示・印刷設定を削除します。既存版のデータは削除しません。元に戻せません。</p>
         <p>ダウンロード済みのバックアップ、PDF、印刷物、別の端末・ブラウザのデータは削除されません。</p>
         <p id="delete-all-data-status" class="delete-all-data-status" aria-live="polite" hidden></p>
         <div class="delete-all-data-backup-row">
@@ -133,7 +133,7 @@
 <div id="sample-delete-info-modal" class="modal-overlay sample-delete-info-modal" style="display:none;" aria-modal="true" role="dialog" aria-labelledby="sample-delete-info-title">
     <div class="modal-content sample-delete-info-modal-content" style="max-width: 540px;">
         <h2 id="sample-delete-info-title">全データ削除機能について</h2>
-        <p>通常版では、全クラスの名簿、座席配置、履歴、シャッフル候補、ルール、表示・印刷設定を削除できます。削除前にはバックアップを作成でき、確認のため「全削除」の入力が必要です。</p>
+        <p>通常版では、通常版の全クラスの名簿、座席配置、履歴、シャッフル候補、ルール、表示・印刷設定を削除できます。削除前にはバックアップを作成でき、確認のため「全削除」の入力が必要です。</p>
         <p>このサンプル版では実際の削除は行いません。再読み込みすると、サンプルの変更は初期状態に戻ります。通常版の保存データには影響しません。</p>
         <div class="sample-delete-info-actions">
             <button type="button" class="btn btn-outline" onclick="closeSampleDeleteInfoModal()">閉じる</button>
@@ -142,7 +142,7 @@
     </div>
 </div>
 
-<div id="import-backup-modal" class="modal-overlay">
+<dialog id="import-backup-modal" class="modal-overlay" aria-label="読み込むクラスを選択">
     <div class="modal-content" style="max-width: 520px;">
         <h2 style="border:none; font-size:1.35em; color: #2c3e50; margin-bottom: 8px;">読み込むクラスを選択</h2>
         <p style="font-size:0.9em; color:#555; margin: 0 0 12px 0; text-align:left;">チェックしたクラスのデータのみ取り込みます（既存の同名クラスは上書き・マージされます）。</p>
@@ -156,9 +156,9 @@
             <button type="button" class="btn" style="padding:10px 22px;" onclick="confirmImportBackup()">読み込む</button>
         </div>
     </div>
-</div>
+</dialog>
 
-<div id="roster-hard-validation-modal" class="modal-overlay roster-hard-validation-modal" style="display: none;" aria-modal="true" role="alertdialog">
+<dialog id="roster-hard-validation-modal" class="modal-overlay roster-hard-validation-modal" aria-modal="true" role="alertdialog" aria-label="名簿の内容を確認してください">
     <div class="modal-content" style="max-width: 560px;">
         <h2 style="border:none; font-size:1.35em; color: #c0392b; margin-bottom: 8px;">名簿の内容を確認してください</h2>
         <p style="font-size: 0.92em; color: #555; margin: 0 0 12px 0; text-align: left;">記法エラーや指定の矛盾があるため、座席表へは進めません。下記を修正してから、もう一度お試しください。</p>
@@ -167,9 +167,9 @@
             <button type="button" class="btn" style="padding: 10px 28px; font-size: 1.1em;" onclick="closeRosterHardValidationModal()">OK</button>
         </div>
     </div>
-</div>
+</dialog>
 
-<div id="soft-validation-modal" class="modal-overlay soft-validation-modal" style="display: none;" aria-modal="true" role="alertdialog">
+<dialog id="soft-validation-modal" class="modal-overlay soft-validation-modal" aria-modal="true" role="alertdialog" aria-label="座席配置の競合リスク">
     <div class="modal-content" style="max-width: 560px;">
         <h2 style="border:none; font-size:1.35em; color: #2c3e50; margin-bottom: 10px;">座席配置の競合リスク</h2>
         <p style="font-size: 0.92em; color: #555; margin: 0 0 10px 0; text-align: left;">以下の設定により、座席配置が不可能になる可能性があります。</p>
@@ -179,9 +179,9 @@
             <button type="button" class="btn" style="padding:10px 22px;" onclick="proceedSoftValidationConfirm()">このまま進む</button>
         </div>
     </div>
-</div>
+</dialog>
 
-<div id="swap-confirm-modal" class="modal-overlay swap-confirm-modal" style="display: none;" aria-modal="true" role="alertdialog">
+<dialog id="swap-confirm-modal" class="modal-overlay swap-confirm-modal" aria-modal="true" role="alertdialog" aria-labelledby="swap-confirm-title">
     <div id="swap-confirm-modal-content" class="modal-content swap-confirm-modal-content" style="max-width: 520px;">
         <h2 id="swap-confirm-title" style="border:none; font-size:1.35em; margin-bottom: 10px;">入れ替えの確認</h2>
         <p id="swap-confirm-message" style="font-size: 0.95em; line-height: 1.55; margin: 0 0 18px 0; text-align: left; white-space: pre-line;"></p>
@@ -190,7 +190,7 @@
             <button type="button" id="swap-confirm-proceed-btn" class="btn" style="padding:10px 22px;" onclick="proceedSwapConfirm()">入れ替える</button>
         </div>
     </div>
-</div>
+</dialog>
 
 <div id="roster-import-mode-modal" class="modal-overlay roster-import-mode-modal" style="display: none;" aria-modal="true" role="alertdialog">
     <div class="modal-content" style="max-width: 520px;">
@@ -260,7 +260,7 @@
     </div>
 </div>
 
-<div id="seat-track-modal" class="modal-overlay" onclick="if(event.target === this) closeSeatTrackModal()">
+<dialog id="seat-track-modal" class="modal-overlay" onclick="if(event.target === this) closeSeatTrackModal()" aria-label="座席追跡">
     <div class="modal-content seat-track-modal-content">
         <h2 style="border:none; font-size:1.15em; color: #2c3e50; margin-bottom: 8px;">座席追跡</h2>
         <div class="seat-track-head">
@@ -284,7 +284,7 @@
             <button class="btn btn-outline" onclick="closeSeatTrackModal()">閉じる</button>
         </div>
     </div>
-</div>
+</dialog>
 
 <div id="print-overlay" class="no-print">
     <div class="print-toolbar-head">
@@ -332,7 +332,7 @@
     <button class="tab-btn active" onclick="switchTab('tab-main', event)">座席表・設定</button>
     <button class="tab-btn" onclick="switchTab('tab-students', event)">名簿管理</button>
     <div class="tab-utility-actions" aria-label="使い方、表示と印刷">
-        <a class="btn btn-outline tab-utility-btn" href="./guide.html">使い方</a>
+        <a class="btn btn-outline tab-utility-btn" href="../guide.html" target="_blank" rel="noopener">使い方</a>
         <button type="button" class="btn btn-outline tab-utility-btn" id="btn-ui-layout-toggle" onclick="toggleUiLayoutMode()" aria-pressed="true">画面: 横</button>
         <button class="btn btn-outline tab-utility-btn" id="btn-main-view-toggle" onclick="toggleView()">教員視点</button>
         <button class="btn btn-outline tab-utility-btn" onclick="togglePrintMode()">印刷プレビュー</button>
@@ -340,8 +340,22 @@
 </div>
 
 <div id="tab-main" class="tab-content active">
-    <div id="alert-box"></div>
-    
+
+    <div id="preview-points-legend" class="preview-points-legend no-print" hidden>金枠の席は、今回の配置調整で優先ルールのポイントが残っている生徒です。</div>
+
+    <div class="classroom-wrapper" id="classroom">
+        <div class="desk-row">
+            <div class="desk-row-inner" id="desk-row-inner">
+                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-min" onclick="cycleEdgeAttr('min')" title="教卓から見て左端列の属性">廊下</button>
+                <div class="desk-teacher" id="desk-class-title">
+                    <span id="class-name-in-desk" class="class-name-in-desk-text"></span>
+                </div>
+                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-max" onclick="cycleEdgeAttr('max')" title="教卓から見て右端列の属性">窓</button>
+            </div>
+        </div>
+        <div class="seat-grid" id="seat-grid"></div>
+    </div>
+
     <div class="action-bar no-print">
         <div class="action-bar-top">
             <div class="main-status-controls" id="main-status-controls">
@@ -350,8 +364,9 @@
                     <span class="main-class-summary-item"><span class="main-class-summary-label">男子</span><span class="main-class-summary-value" id="counter-boys">—</span><span class="main-class-summary-unit">名</span></span>
                     <span class="main-class-summary-item"><span class="main-class-summary-label">女子</span><span class="main-class-summary-value" id="counter-girls">—</span><span class="main-class-summary-unit">名</span></span>
                     <span class="main-class-summary-item"><span class="main-class-summary-label">計</span><span class="main-class-summary-value" id="counter-students">0</span><span class="main-class-summary-unit">名</span></span>
-                    <span class="main-class-summary-item" aria-label="有効座席数" title="有効座席数"><span class="main-class-summary-label">座席</span><span class="main-class-summary-value" id="counter-seats">42</span><span class="main-class-summary-unit">席</span></span>
+                    <span class="main-class-summary-item" aria-label="有効座席数" title="有効座席数"><span class="main-class-summary-label">有効</span><span class="main-class-summary-value" id="counter-seats">42</span><span class="main-class-summary-unit">席</span></span>
                 </div>
+                <button type="button" class="btn btn-outline" id="btn-seat-size" onclick="openSeatSizeModal()">座席数 6×7</button>
             </div>
         </div>
 
@@ -376,24 +391,43 @@
         </div>
     </div>
 
-    <div id="preview-points-legend" class="preview-points-legend no-print" hidden>金枠の席は、今回の配置調整で優先ルールのポイントが残っている生徒です。</div>
-
-    <div class="classroom-wrapper" id="classroom">
-        <div class="desk-row">
-            <div class="desk-row-inner" id="desk-row-inner">
-                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-min" onclick="cycleEdgeAttr('min')" title="教卓から見て左端列の属性">廊下</button>
-                <div class="desk-teacher" id="desk-class-title">
-                    <span id="class-name-in-desk" class="class-name-in-desk-text"></span>
+    <div id="alert-box"></div>
+    <div class="settings-bottom no-print" id="settings-bottom">
+        <div class="settings-status-slot" id="settings-status-slot"></div>
+        <div class="settings-action-slot" id="settings-action-slot"></div>
+        <div class="panel">
+            <h2>データ・履歴管理</h2>
+            <div class="history-management-block">
+                <label for="history-memo-input" class="history-management-label">配置名（選択中の履歴）</label>
+                <div class="flex-row history-management-row">
+                    <input type="text" id="history-memo-input" maxlength="10" placeholder="配置名（全角10文字まで）" style="flex-grow:1;">
+                    <button class="btn btn-outline" onclick="saveHistoryMemo()">名前を保存</button>
                 </div>
-                <button type="button" class="btn btn-outline edge-attr-btn" id="edge-btn-max" onclick="cycleEdgeAttr('max')" title="教卓から見て右端列の属性">窓</button>
+            </div>
+            <div class="history-management-block">
+            <label for="history-select" class="history-management-label">過去の配置を盤面に復元</label>
+            <div class="flex-row history-management-row">
+                <select id="history-select"></select>
+                <button class="btn btn-danger" style="padding: 8px 10px;" onclick="deleteSelectedHistory()" title="選択した履歴を削除">削除</button>
+            </div>
+            <div class="flex-row history-extra-actions">
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="exportHistoryLastTwoDigitsToClipboard()" title="履歴を選んだときはその配置。未選択時は現在の盤面（確定／プレビュー）。教員視点固定（教卓が下）で、座席表形式（1席=1セル）でコピー">外部座席表用・番号コピー</button>
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して、確認後に履歴へ保存します">Excelの座席表を取り込む</button>
+            </div>
+            </div>
+            <p class="local-data-note">通常版の名簿・履歴・設定は、この端末のこのブラウザ内に保存されます。入力した名簿を外部へ送信せず、別の端末・ブラウザにも自動共有されません。定期的にバックアップを保存してください。</p>
+            <div class="backup-actions">
+                <button class="btn btn-outline" style="font-size:0.85em;" onclick="openExportBackupModal()">バックアップ保存</button>
+                <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
+                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
+            </div>
+            <p id="backup-status" class="backup-status">最終バックアップ: —</p>
+            <hr class="history-danger-divider">
+            <div class="history-danger-actions">
+                <button class="btn btn-danger history-reset-button" onclick="clearAllHistories()">クラス履歴リセット</button>
+                <button class="btn btn-danger history-reset-button history-delete-all-button" onclick="openDeleteAllDataFlow()">全データ削除</button>
             </div>
         </div>
-        <div class="seat-grid" id="seat-grid"></div>
-    </div>
-
-    <div class="settings-bottom no-print" id="settings-bottom">
-        <div class="settings-action-slot" id="settings-action-slot"></div>
-        <div class="settings-status-slot" id="settings-status-slot"></div>
         <div class="panel">
             <div class="flex-row" style="justify-content: space-between; border-bottom: 2px solid var(--primary); padding-bottom: 5px; margin-bottom: 8px;">
                 <h2 style="border:none; margin:0; width:auto;">座席内レイアウト設定</h2>
@@ -410,7 +444,7 @@
                 <tbody id="seat-layout-tbody"></tbody>
             </table>
             <input type="hidden" id="layout-rules" value="">
-            
+
             <div id="color-palette-group" class="main-color-controls">
                 <h3>色設定</h3>
                 <div class="main-color-token-list" role="group" aria-label="色1から色6">
@@ -446,40 +480,6 @@
                 </div>
             </div>
 
-        </div>
-
-        <div class="panel">
-            <h2>データ・履歴管理</h2>
-            <div class="history-management-block">
-                <label for="history-memo-input" class="history-management-label">配置名（選択中の履歴）</label>
-                <div class="flex-row history-management-row">
-                    <input type="text" id="history-memo-input" maxlength="10" placeholder="配置名（全角10文字まで）" style="flex-grow:1;">
-                    <button class="btn btn-outline" onclick="saveHistoryMemo()">名前を保存</button>
-                </div>
-            </div>
-            <div class="history-management-block">
-            <label for="history-select" class="history-management-label">過去の配置を盤面に復元</label>
-            <div class="flex-row history-management-row">
-                <select id="history-select"></select>
-                <button class="btn btn-danger" style="padding: 8px 10px;" onclick="deleteSelectedHistory()" title="選択した履歴を削除">削除</button>
-            </div>
-            <div class="flex-row history-extra-actions">
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="exportHistoryLastTwoDigitsToClipboard()" title="履歴を選んだときはその配置。未選択時は現在の盤面（確定／プレビュー）。教員視点固定（教卓が下）で、7×6 の座席表形式（1席=1セル）でコピー">外部座席表用・番号コピー</button>
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="openExcelImportModal()" title="Excel等からコピーした座席表（TSV）を名簿と照合して、確認後に履歴へ保存します">Excelの座席表を取り込む</button>
-            </div>
-            </div>
-            <p class="local-data-note">通常版の名簿・履歴・設定は、この端末のこのブラウザ内に保存されます。入力した名簿を外部へ送信せず、別の端末・ブラウザにも自動共有されません。定期的にバックアップを保存してください。</p>
-            <div class="backup-actions">
-                <button class="btn btn-outline" style="font-size:0.85em;" onclick="openExportBackupModal()">バックアップ保存</button>
-                <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
-                <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
-            </div>
-            <p id="backup-status" class="backup-status">最終バックアップ: —</p>
-            <hr class="history-danger-divider">
-            <div class="history-danger-actions">
-                <button class="btn btn-danger history-reset-button" onclick="clearAllHistories()">クラス履歴リセット</button>
-                <button class="btn btn-danger history-reset-button history-delete-all-button" onclick="openDeleteAllDataFlow()">全データ削除</button>
-            </div>
         </div>
     </div>
 </div>
@@ -682,7 +682,7 @@
                     <span style="color:#555;">備考欄（@指定・個別NG）・全体ルール・市松は必須ルールです。全体ルールのNGでは <code>*</code> を使ったグループ指定もできます。机ペア相手の重複は優先ルールとして少なくなります。</span>
                 </div>
             </div>
-            
+
             <details class="technical-note">
                 <summary>配置調整のしくみ（技術情報）</summary>
                 <p>NGペア（8近傍への隣接禁止）は、候補から除外する必須ルールです。そのうえで、前列・後列・過去ペア・窓側／廊下側・過去座席のポイントを生徒ごとに集計します。最終配置は、最大個人ポイント→個人ポイントの分布→総合ポイントの順で比較します。初期候補を複数作成して調整を重ね、総合ポイントが0なら早期終了します。</p>
@@ -691,6 +691,16 @@
     </div>
 </div>
 
-<script src="app.js?v=20261028-print-seat-gaps-v3"></script>
+<script src="app.js?v=20261125-official"></script>
+<dialog id="app-dialog" class="app-dialog" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
+    <h2 id="app-dialog-title">確認</h2><p id="app-dialog-message"></p>
+    <div class="app-dialog-actions"><button type="button" class="btn btn-outline" id="app-dialog-cancel">キャンセル</button><button type="button" class="btn" id="app-dialog-ok">OK</button></div>
+</dialog>
+<dialog id="seat-size-dialog" class="app-dialog" aria-labelledby="seat-size-title">
+    <h2 id="seat-size-title">座席数設定</h2>
+    <div class="seat-size-fields"><label>横<select id="seat-size-cols" onchange="updateSeatSizeSummary()" aria-label="横の列数"></select>列</label><label>縦<select id="seat-size-rows" onchange="updateSeatSizeSummary()" aria-label="縦の行数"></select>行</label></div>
+    <p id="seat-size-summary" aria-live="polite"></p><p id="seat-size-error" role="alert" hidden></p>
+    <div class="app-dialog-actions"><button type="button" class="btn btn-outline" onclick="closeSeatSizeModal()">キャンセル</button><button type="button" class="btn" id="seat-size-apply" onclick="applySeatResize()">変更する</button></div>
+</dialog>
 </body>
 </html>
