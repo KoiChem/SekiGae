@@ -193,3 +193,64 @@ test('initial search distinguishes an exhausted search from a deadline', async (
     context.safetyContext.searchEndDeadline = 10;
     assert.equal((await s.context.buildInitialByBacktracking(0, context)).stopReason, 'time');
 });
+
+test('regular recovery adds old classes when v7 already contains an edited class with the same ID', () => {
+    const s = setup();
+    const prefix = s.run('PREFIX');
+    const old = 'SekigaeKun_v6_';
+    const oldSystem = JSON.stringify({ classes: [{ id: 'test', name: '改修前' }, { id: 'extra', name: '別クラス' }], currentClassId: 'test' });
+    const contemporary = JSON.stringify({ classes: [{ id: 'test', name: '編集済み' }], currentClassId: 'test' });
+    const original = JSON.stringify({ students: [{ id: '11', name: '旧名簿' }] });
+    const edited = JSON.stringify({ cols: 8, rows: 8, students: [{ id: '21', name: '新名簿' }] });
+    s.storage.set(old + 'system', oldSystem);
+    s.storage.set(old + 'data_test', original);
+    s.storage.set(old + 'data_extra', original);
+    s.storage.set(prefix + 'system', contemporary);
+    s.storage.set(prefix + 'data_test', edited);
+    s.context.migratePreviousClassData();
+    assert.equal(s.context.readClassStorage(prefix + 'system'), contemporary);
+    assert.deepEqual(s.json('getRegularRecoveryCandidates().map(entry => entry.id)'), ['test', 'extra']);
+    assert.equal(s.context.recoverRegularClasses(['test']), 1);
+    assert.equal(s.context.readClassStorage(prefix + 'data_test'), edited);
+    assert.equal(s.context.readClassStorage(prefix + 'data_test_legacy'), original);
+    assert.equal(s.storage.get(old + 'data_test'), original);
+    assert.deepEqual(s.json('getRegularRecoveryCandidates().map(entry => entry.id)'), ['extra']);
+    assert.equal(s.context.recoverRegularClasses(['test']), 0);
+    assert.equal(JSON.parse(s.context.readClassStorage(prefix + 'system')).currentClassId, 'test');
+});
+
+test('regular recovery preserves default data without a v7 class list and rolls back on quota errors', () => {
+    const s = setup();
+    const prefix = s.run('PREFIX');
+    s.run("appData={classes:[{id:'class_default',name:'現行'}],currentClassId:'class_default'}");
+    const oldKey = 'SekigaeKun_v5_data_class_default';
+    const currentKey = prefix + 'data_class_default';
+    const old = JSON.stringify({ students: [{ id: '01' }] });
+    const current = JSON.stringify({ students: [{ id: '02' }] });
+    s.storage.set(oldKey, old);
+    s.storage.set(currentKey, current);
+    const write = s.context.localStorage.setItem;
+    s.context.localStorage.setItem = () => { throw Error('quota'); };
+    assert.throws(() => s.context.recoverRegularClasses(['class_default']), /quota/);
+    assert.equal(s.context.readClassStorage(currentKey), current);
+    assert.equal(s.context.readClassStorage(prefix + 'system'), null);
+    assert.equal(s.storage.get(oldKey), old);
+    s.context.localStorage.setItem = write;
+    assert.equal(s.context.recoverRegularClasses(['class_default']), 1);
+    assert.equal(s.context.readClassStorage(currentKey), current);
+    assert.equal(s.context.readClassStorage(currentKey + '_legacy'), old);
+});
+
+test('regular recovery hides data already migrated by the first launch and stays unavailable in sample mode', () => {
+    for (const search of ['', '?sample=1']) {
+        const s = setup(search);
+        const prefix = s.run('PREFIX');
+        const system = JSON.stringify({ classes: [{ id: 'test', name: '記録済み' }], currentClassId: 'test' });
+        const data = JSON.stringify({ students: [{ id: '01' }] });
+        s.storage.set('SekigaeKun_v6_system', system);
+        s.storage.set('SekigaeKun_v6_data_test', data);
+        s.storage.set(prefix + 'system', system);
+        s.storage.set(prefix + 'data_test', data);
+        assert.deepEqual(s.json('getRegularRecoveryCandidates()'), []);
+    }
+});

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SekiGae</title>
-<link rel="stylesheet" href="styles.css?v=20261125-official">
+<link rel="stylesheet" href="styles.css?v=20261126-regular-recovery">
 <style id="print-page-orientation-style" media="print">
 @page { size: A4 landscape; margin: 10mm; }
 </style>
@@ -142,10 +142,10 @@
     </div>
 </div>
 
-<dialog id="import-backup-modal" class="modal-overlay" aria-label="読み込むクラスを選択">
+<dialog id="import-backup-modal" class="modal-overlay" aria-labelledby="import-backup-title">
     <div class="modal-content" style="max-width: 520px;">
-        <h2 style="border:none; font-size:1.35em; color: #2c3e50; margin-bottom: 8px;">読み込むクラスを選択</h2>
-        <p style="font-size:0.9em; color:#555; margin: 0 0 12px 0; text-align:left;">チェックしたクラスのデータのみ取り込みます（既存の同名クラスは上書き・マージされます）。</p>
+        <h2 id="import-backup-title" style="border:none; font-size:1.35em; color: #2c3e50; margin-bottom: 8px;">読み込むクラスを選択</h2>
+        <p id="import-backup-note" style="font-size:0.9em; color:#555; margin: 0 0 12px 0; text-align:left;">チェックしたクラスのデータのみ取り込みます（既存の同名クラスは上書き・マージされます）。</p>
         <div id="import-class-checkboxes" class="backup-class-checkboxes"></div>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:10px;">
             <button type="button" class="btn btn-outline" style="padding:6px 14px;" onclick="toggleImportClasses(true)">全選択</button>
@@ -153,7 +153,7 @@
         </div>
         <div style="display:flex; gap:12px; justify-content:center; margin-top:22px;">
             <button type="button" class="btn btn-outline" style="padding:10px 22px;" onclick="closeImportBackupModal()">キャンセル</button>
-            <button type="button" class="btn" style="padding:10px 22px;" onclick="confirmImportBackup()">読み込む</button>
+            <button id="import-backup-confirm" type="button" class="btn" style="padding:10px 22px;" onclick="confirmImportBackup()">読み込む</button>
         </div>
     </div>
 </dialog>
@@ -420,6 +420,7 @@
                 <button class="btn btn-outline" style="font-size:0.85em;" onclick="openExportBackupModal()">バックアップ保存</button>
                 <input type="file" id="import-file" accept=".json,.JSON,application/json" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true">
                 <button type="button" class="btn btn-outline" style="font-size:0.85em;" onclick="triggerBackupImportPicker()">バックアップ読込</button>
+                <button id="btn-recover-regular-data" type="button" class="btn btn-outline" hidden onclick="openRegularRecovery()">旧通常版のデータを引き継ぐ</button>
             </div>
             <p id="backup-status" class="backup-status">最終バックアップ: —</p>
             <hr class="history-danger-divider">
@@ -691,7 +692,7 @@
     </div>
 </div>
 
-<script src="app.js?v=20261125-official"></script>
+<script src="app.js?v=20261126-regular-recovery"></script>
 <dialog id="app-dialog" class="app-dialog" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
     <h2 id="app-dialog-title">確認</h2><p id="app-dialog-message"></p>
     <div class="app-dialog-actions"><button type="button" class="btn btn-outline" id="app-dialog-cancel">キャンセル</button><button type="button" class="btn" id="app-dialog-ok">OK</button></div>

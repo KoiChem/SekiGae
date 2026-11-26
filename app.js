@@ -157,6 +157,7 @@ const OLD_TRIAL_PREFIX = 'SekiGaeTrial_v1_';
 const OLD_REGULAR_DATA_PREFIXES = [OLD_REGULAR_PREFIX, 'SekigaeKun_v5_', 'SekigaeKun_v4_',
     'SekigaeKun_v3_', 'SekigaeKun_v2_', 'SekigaeKun_v1_', 'SekigaeApp_v4_'];
 const restoredDataKey = PREFIX + 'restored';
+const regularRecoveryKey = PREFIX + 'recovered_regular_classes';
 let classReadFailed = false;
 let systemReadFailed = false;
 
@@ -189,6 +190,29 @@ function writeClassStorage(key, value) {
     else writeClassStorageBatch({ [key]: value });
 }
 
+function readPreviousClassSystem(source, read) {
+    const raw = read(source + 'system');
+    if (raw !== null) {
+        const system = JSON.parse(raw);
+        if (!Array.isArray(system?.classes) || system.classes.some(c => !c ||
+            typeof c.id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(c.id) || typeof c.name !== 'string')) {
+            throw new Error('旧版のクラス一覧が不正です。');
+        }
+        return system;
+    }
+    if (readPreviousClassData(source, 'class_default', read) === null) return null;
+    return { classes: [{ id: 'class_default', name: '新しいクラス' }], currentClassId: 'class_default' };
+}
+
+function readPreviousClassData(source, id, read) {
+    const prefixes = source === OLD_REGULAR_PREFIX ? OLD_REGULAR_DATA_PREFIXES : [source];
+    for (const prefix of prefixes) {
+        const value = read(prefix + 'data_' + id);
+        if (value !== null) return value;
+    }
+    return null;
+}
+
 // 旧版・試作版から先に全件を集め、正式版に一度の書き込みで反映する。
 function migratePreviousClassData() {
     if (SAMPLE_MODE || [restoredDataKey, PREFIX + 'system', PREFIX + 'data_class_default']
@@ -204,25 +228,12 @@ function migratePreviousClassData() {
             throw new Error('旧試作版の復元データが不正です。');
         }
         const read = key => snapshot && Object.hasOwn(snapshot, key) ? snapshot[key] : appStorage.getItem(key);
-        const rawSystem = read(source + 'system');
-        let system;
-        if (rawSystem !== null) {
-            system = JSON.parse(rawSystem);
-            if (!Array.isArray(system?.classes) || system.classes.some(c => !c ||
-                typeof c.id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(c.id) || typeof c.name !== 'string')) {
-                throw new Error('旧版のクラス一覧が不正です。');
-            }
-        } else {
-            const prefixes = source === OLD_REGULAR_PREFIX ? OLD_REGULAR_DATA_PREFIXES : [source];
-            if (!prefixes.some(prefix => read(prefix + 'data_class_default') !== null)) continue;
-            system = { classes: [{ id: 'class_default', name: '新しいクラス' }], currentClassId: 'class_default' };
-        }
+        const system = readPreviousClassSystem(source, read);
+        if (!system) continue;
 
         const ids = new Map();
         for (const { id, name } of system.classes) {
-            const oldData = source === OLD_REGULAR_PREFIX
-                ? OLD_REGULAR_DATA_PREFIXES.map(prefix => read(prefix + 'data_' + id)).find(value => value !== null) ?? null
-                : read(source + 'data_' + id);
+            const oldData = readPreviousClassData(source, id, read);
             if (oldData !== null && typeof oldData !== 'string') throw new Error('旧版のクラスデータが不正です。');
             let newId = id;
             const existing = classes.find(entry => entry.id === id);
@@ -1232,6 +1243,7 @@ let printSeatGaps = normalizePrintSeatGaps();
 let protectedExceptionSeats = new Set();
 /** バックアップ読込で選択モーダルを出すまで保持する解析済み JSON オブジェクト */
 let pendingImportBackupData = null;
+let pendingRegularRecovery = false;
 /** 全データ削除モーダルとバックアップ選択モーダルの往復状態 */
 let exportBackupReturnTarget = null;
 let deleteAllDataEscListener = null;
@@ -1860,6 +1872,7 @@ function initializeApp() {
     initColorPaletteUI();
     initPrintSettingsPanel();
     initGrid(); loadAppSystemData(); loadCurrentClassData();
+    updateRegularRecoveryButton();
     updatePrintInactiveToggleUi();
     applyPrintOrientation();
     initFormArrowNavigation();
@@ -8396,6 +8409,110 @@ async function confirmExportBackup() {
     closeExportBackupModal({ downloadStarted: true, classCount: selectedIds.length });
 }
 
+function readRegularRecoveryTarget() {
+    const raw = readClassStorage(PREFIX + 'system');
+    const system = raw === null ? { ...appData, classes: [...appData.classes] } : JSON.parse(raw);
+    if (!Array.isArray(system?.classes) || system.classes.some(entry => !entry || typeof entry.id !== 'string')) {
+        throw new Error('現在のクラス一覧を読み込めません。');
+    }
+    return system;
+}
+
+function getRegularRecoveryCandidates(system, recovered) {
+    if (SAMPLE_MODE) return [];
+    const read = key => appStorage.getItem(key);
+    const previous = readPreviousClassSystem(OLD_REGULAR_PREFIX, read);
+    if (!previous) return [];
+    system ??= readRegularRecoveryTarget();
+    recovered ??= new Set(JSON.parse(readClassStorage(regularRecoveryKey) ?? '[]'));
+    return previous.classes.flatMap(({ id, name }) => {
+        if (recovered.has(id)) return [];
+        const data = readPreviousClassData(OLD_REGULAR_PREFIX, id, read);
+        if (data === null || (system.classes.some(entry => entry.id === id) &&
+            readClassStorage(PREFIX + 'data_' + id) === data)) return [];
+        return [{ id, name, data }];
+    });
+}
+
+function recoverRegularClasses(selectedIds) {
+    if (SAMPLE_MODE) return 0;
+    const system = readRegularRecoveryTarget();
+    const recovered = new Set(JSON.parse(readClassStorage(regularRecoveryKey) ?? '[]'));
+    const candidates = getRegularRecoveryCandidates(system, recovered).filter(entry => selectedIds.includes(entry.id));
+    if (!candidates.length) return 0;
+    const entries = Object.create(null);
+    for (const { id, name, data } of candidates) {
+        let error;
+        try { error = validateTrialClassData(JSON.parse(data)); }
+        catch { error = '保存データを解析できません。'; }
+        if (error) throw new Error(`「${name}」を引き継げません。 ${error}`);
+        const hasId = key => system.classes.some(entry => entry.id === key) ||
+            readClassStorage(PREFIX + 'data_' + key) !== null;
+        const collision = hasId(id);
+        let targetId = id;
+        if (collision) {
+            targetId = id + '_legacy';
+            let suffix = 2;
+            while (hasId(targetId)) targetId = id + '_legacy' + suffix++;
+        }
+        system.classes.push({ id: targetId, name: collision ? name + '（旧版）' : name });
+        entries[PREFIX + 'data_' + targetId] = data;
+        recovered.add(id);
+    }
+    entries[PREFIX + 'system'] = JSON.stringify(system);
+    entries[regularRecoveryKey] = JSON.stringify([...recovered]);
+    writeClassStorageBatch(entries);
+    return candidates.length;
+}
+
+function updateRegularRecoveryButton() {
+    const button = document.getElementById('btn-recover-regular-data');
+    if (!button || SAMPLE_MODE) return;
+    try { button.hidden = getRegularRecoveryCandidates().length === 0; }
+    catch (error) {
+        // 一覧の読み込みに失敗した場合は操作時に詳細を表示する。
+        console.error('旧版データの確認エラー', error);
+        button.hidden = false;
+    }
+}
+
+async function openRegularRecovery() {
+    if (SAMPLE_MODE) return;
+    try {
+        const candidates = getRegularRecoveryCandidates();
+        if (!candidates.length) {
+            updateRegularRecoveryButton();
+            await appAlert('このブラウザに、追加できる旧通常版のクラスはありません。');
+            return;
+        }
+        pendingRegularRecovery = true;
+        pendingImportBackupData = { [PREFIX + 'system']: JSON.stringify({
+            classes: candidates.map(({ id, name }) => ({ id, name }))
+        }) };
+        await openImportBackupModal();
+    } catch (error) {
+        console.error('旧版データの読み込みエラー', error);
+        await appAlert('旧通常版の保存データを読み込めませんでした。元のデータは保持されています。');
+    }
+}
+
+async function confirmRegularRecovery(selectedIds) {
+    try {
+        const count = recoverRegularClasses(selectedIds);
+        closeImportBackupModal();
+        loadAppSystemData();
+        updateRegularRecoveryButton();
+        await appAlert(count ? `旧通常版の${count}クラスを追加しました。クラス選択から開けます。`
+            : '追加できる旧通常版のクラスはありません。');
+    } catch (error) {
+        console.error('旧版データの引き継ぎエラー', error);
+        const message = error.name === 'QuotaExceededError'
+            ? 'ブラウザの保存容量が不足しています。'
+            : '選んだクラスの保存データを確認してください。';
+        await appAlert(`引き継げませんでした。${message}元のデータも現在のクラスも保持されています。`);
+    }
+}
+
 async function openImportBackupModal() {
     if (!pendingImportBackupData || typeof pendingImportBackupData !== 'object') {
         await appAlert('読み込みデータがありません。');
@@ -8421,6 +8538,14 @@ async function openImportBackupModal() {
         label.appendChild(document.createTextNode(` ${c.name || c.id}`));
         container.appendChild(label);
     });
+    const title = document.getElementById('import-backup-title');
+    const note = document.getElementById('import-backup-note');
+    const confirmButton = document.getElementById('import-backup-confirm');
+    if (title) title.textContent = pendingRegularRecovery ? '引き継ぐ旧通常版のクラスを選択' : '読み込むクラスを選択';
+    if (note) note.textContent = pendingRegularRecovery
+        ? '選んだクラスを追加します。現在のクラスや旧版に残っているデータはそのまま保持します。'
+        : 'チェックしたクラスのデータのみ取り込みます（既存の同名クラスは上書き・マージされます）。';
+    if (confirmButton) confirmButton.textContent = pendingRegularRecovery ? '引き継ぐ' : '読み込む';
     const modal = document.getElementById('import-backup-modal');
     if (!modal.open) modal.showModal();
     modal.oncancel = event => { event.preventDefault(); closeImportBackupModal(); };
@@ -8430,6 +8555,7 @@ function closeImportBackupModal() {
     const el = document.getElementById('import-backup-modal');
     if (el) el.close();
     pendingImportBackupData = null;
+    pendingRegularRecovery = false;
 }
 
 function toggleImportClasses(checked) {
@@ -8485,6 +8611,7 @@ async function confirmImportBackup() {
         await appAlert('読み込みデータがありません。');
         return;
     }
+    if (pendingRegularRecovery) return confirmRegularRecovery(selectedIds);
     const importError = validateImportedTrialBackup(pendingImportBackupData, selectedIds);
     if (importError) { await appAlert(`読み込めません。${importError}\n現在のデータは変更していません。`);return; }
     try { mergeImportedBackupIntoLocalStorage(pendingImportBackupData, selectedIds); }

@@ -1243,6 +1243,7 @@ body.ui-layout-landscape .main-color-token { width: 100%; }
 #history-select { overflow: hidden; text-overflow: ellipsis; }
 .history-extra-actions { margin-top: 8px; flex-wrap: wrap; gap: 8px; }
 .backup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#btn-recover-regular-data { grid-column: 1 / -1; font-size: 0.85em; }
 .history-danger-divider { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
 .history-danger-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .history-reset-button { width: 100%; font-size: 0.85em; }
