@@ -158,6 +158,7 @@ const OLD_REGULAR_DATA_PREFIXES = [OLD_REGULAR_PREFIX, 'SekigaeKun_v5_', 'Sekiga
     'SekigaeKun_v3_', 'SekigaeKun_v2_', 'SekigaeKun_v1_', 'SekigaeApp_v4_'];
 const restoredDataKey = PREFIX + 'restored';
 const regularRecoveryKey = PREFIX + 'recovered_regular_classes';
+const regularRecoveryNoticeKey = PREFIX + 'regular_recovery_notice_seen';
 let classReadFailed = false;
 let systemReadFailed = false;
 
@@ -1926,6 +1927,7 @@ window.onload = async () => {
     initializeApp();
     if (!SAMPLE_MODE) showDeleteAllDataCompleteNotice();
     showSampleWelcomeModal();
+    await offerRegularRecoveryOnStartup();
 };
 
 /** テーブル DOM 変更時はバージョンを上げる（古いキャッシュでフォント列が欠けるのを防ぐ） */
@@ -8476,6 +8478,24 @@ function updateRegularRecoveryButton() {
     }
 }
 
+async function offerRegularRecoveryOnStartup() {
+    if (SAMPLE_MODE) return;
+    try {
+        if (appStorage.getItem(regularRecoveryNoticeKey) !== null || !getRegularRecoveryCandidates().length) return;
+    } catch (error) {
+        console.warn('旧通常版の引き継ぎ案内を確認できませんでした。', error);
+        return;
+    }
+
+    const proceed = await showAppDialog(
+        '以前のクラスがこのブラウザに残っています。引き継ぐクラスを選べます。あとで引き継ぐ場合は、座席表・設定の「旧通常版のデータを引き継ぐ」から開けます。',
+        { confirm: true, confirmLabel: '引き継ぐクラスを選ぶ', cancelLabel: 'あとで' }
+    );
+    try { appStorage.setItem(regularRecoveryNoticeKey, '1'); }
+    catch (error) { console.warn('引き継ぎ案内の表示済み状態を保存できませんでした。', error); }
+    if (proceed) await openRegularRecovery();
+}
+
 async function openRegularRecovery() {
     if (SAMPLE_MODE) return;
     try {
@@ -8806,13 +8826,13 @@ async function applySeatResize() {
 
 // --- 中央メッセージ。確認の返答までは後続処理を進めない。 ---
 let appDialogPending = null;
-function showAppDialog(message, {confirm=false, confirmLabel='OK'} = {}) {
+function showAppDialog(message, {confirm=false, confirmLabel='OK', cancelLabel='キャンセル'} = {}) {
     if (appDialogPending) return Promise.resolve(false);
     const dialog=document.getElementById('app-dialog'), previous=document.activeElement;
     const ok=document.getElementById('app-dialog-ok'), cancel=document.getElementById('app-dialog-cancel');
     document.getElementById('app-dialog-title').textContent=confirm ? '確認' : 'お知らせ';
     document.getElementById('app-dialog-message').textContent=message;
-    ok.textContent=confirmLabel;cancel.hidden=!confirm;
+    ok.textContent=confirmLabel;cancel.textContent=cancelLabel;cancel.hidden=!confirm;
     return new Promise(resolve=>{
         const finish=result=>{
             if (!appDialogPending) return;
